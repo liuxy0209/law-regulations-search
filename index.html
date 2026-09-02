@@ -558,7 +558,7 @@
     </div>
 </div>
 
-<div class="data-notice">检索结果仅作线索参考，不构成现行依据。请以详情页的“来源与版本信息”为准；标记“待人工核验”或含质量提示的文件，必须对照原始公报或受控原件。</div>
+<div class="data-notice">检索结果仅作线索参考，不构成现行依据。请以详情页的“来源与版本信息”为准；标记“待人工核验”或含质量提示的文件，必须对照原始公报或受控原件。本站会记录访问时间、页面及 IP 地址，供管理员进行安全审计。</div>
 
 <!-- ==================== 搜索框 ==================== -->
 <div class="search-section">
@@ -629,14 +629,13 @@
 <dialog class="feedback-dialog" id="feedbackDialog" aria-labelledby="feedbackTitle">
     <form class="feedback-content" id="feedbackForm">
         <h2 id="feedbackTitle">提交意见反馈</h2>
-        <p>可匿名提交。管理员仅查看你主动填写的信息；系统会记录匿名化的访问时间与页面，不保存原始 IP。</p>
+        <p>提交后会直接送达管理员。姓名和联系方式可不填；本站会记录访问时间、页面及 IP 地址，供管理员进行安全审计。</p>
         <label for="feedbackName">姓名或称呼（可选）</label>
         <input id="feedbackName" name="name" maxlength="50" autocomplete="name">
         <label for="feedbackContact">联系方式（可选）</label>
         <input id="feedbackContact" name="contact" maxlength="100" autocomplete="email">
         <label for="feedbackMessage">意见内容</label>
-        <textarea id="feedbackMessage" name="message" rows="5" minlength="30" maxlength="2000" required placeholder="请尽量描述具体制度、条款或改进建议（30—2000 字）"></textarea>
-        <label class="feedback-consent"><input id="feedbackConsent" type="checkbox" required>我同意将以上反馈提交给系统管理员处理。</label>
+        <textarea id="feedbackMessage" name="message" rows="5" required placeholder="请描述具体制度、条款或改进建议"></textarea>
         <p class="feedback-status" id="feedbackStatus" aria-live="polite"></p>
         <div class="feedback-actions"><button class="feedback-cancel" id="feedbackCancel" type="button">取消</button><button class="search-btn" id="feedbackSubmit" type="submit">提交反馈</button></div>
     </form>
@@ -710,10 +709,10 @@ async function submitFeedback(event) {
     const status = document.getElementById('feedbackStatus');
     const submit = document.getElementById('feedbackSubmit');
     const message = document.getElementById('feedbackMessage').value.trim();
-    if (message.length < 30) { status.textContent = '意见内容至少需要 30 个字。'; status.className = 'feedback-status error'; return; }
+    if (!message) { status.textContent = '请填写意见内容。'; status.className = 'feedback-status error'; return; }
     submit.disabled = true; status.className = 'feedback-status'; status.textContent = '正在提交…';
     try {
-        const response = await fetch(ADMIN_API_BASE + '/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: document.getElementById('feedbackName').value, contact: document.getElementById('feedbackContact').value, message: message, consent: document.getElementById('feedbackConsent').checked, page_url: window.location.href }) });
+        const response = await fetch(ADMIN_API_BASE + '/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: document.getElementById('feedbackName').value, contact: document.getElementById('feedbackContact').value, message: message, page_url: window.location.href }) });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || '提交失败，请稍后重试。');
         status.className = 'feedback-status success'; status.textContent = result.message;
