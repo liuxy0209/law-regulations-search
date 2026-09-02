@@ -507,6 +507,27 @@
             z-index: 0;
             letter-spacing: 1px;
         }
+        /* 成果署名：背景淡印 + 固定角标。只作署名提示，不影响页面操作。 */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 1;
+            opacity: 0.055;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='260' viewBox='0 0 360 260'%3E%3Ctext x='44' y='145' transform='rotate(-28 180 130)' fill='%231a56db' font-family='Arial,Microsoft YaHei,sans-serif' font-size='15' letter-spacing='2'%3ELiuXY%20%C2%B7%20%E5%88%98%E9%9C%84%E9%98%B3%E6%95%B4%E7%90%86%3C/text%3E%3C/svg%3E");
+            background-repeat: repeat;
+        }
+        body::after {
+            content: '© LiuXY · 刘霄阳整理';
+            bottom: 8px;
+            right: 14px;
+            font-size: 11px;
+            color: rgba(26,86,219,0.38);
+            z-index: 20;
+            letter-spacing: 0.8px;
+            text-shadow: 0 1px 2px rgba(255,255,255,0.75);
+        }
     </style>
 </head>
 <body>
@@ -1174,7 +1195,7 @@ function _uiOpt(){
     for(var i=0;i<v.length;i+=2){t+=String.fromCharCode((v[i]<<8)|v[i+1]);}
     var e=document.createElement('span');
     e.id='_opt';
-    e.style.cssText='position:fixed;bottom:3px;left:12px;font-size:9px;color:rgba(107,114,128,0.06);pointer-events:none;z-index:0;letter-spacing:2px';
+    e.style.cssText='position:fixed;bottom:8px;left:14px;font-size:10px;color:rgba(107,114,128,0.22);pointer-events:none;z-index:20;letter-spacing:1px';
     e.textContent=t;
     document.body.appendChild(e);
     if(!window._m){window._m=new MutationObserver(function(){if(!document.getElementById('_opt'))_uiOpt();});window._m.observe(document.body,{childList:true});}
