@@ -68,7 +68,13 @@
             color: var(--text);
             line-height: 1.6;
             min-height: 100vh;
+            overflow-x: hidden;
         }
+        .skip-link { position: fixed; top: 8px; left: 8px; z-index: 100; padding: 8px 12px; background: #fff; color: var(--primary-dark); border-radius: var(--radius); transform: translateY(-160%); }
+        .skip-link:focus-visible { transform: translateY(0); }
+        .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+        button, a, input { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+        button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid #f59e0b; outline-offset: 2px; }
 
         /* ===================== 页头 Header ===================== */
         .header {
@@ -91,6 +97,16 @@
         .header p {
             font-size: 14px;
             opacity: 0.85;
+        }
+        .data-notice {
+            max-width: 1200px;
+            margin: 14px auto 0;
+            padding: 10px 14px;
+            border: 1px solid #f6c36b;
+            border-radius: var(--radius);
+            background: var(--warn-light);
+            color: #7c4a03;
+            font-size: 13px;
         }
 
         /* ===================== 搜索框 ===================== */
@@ -130,7 +146,7 @@
             transition: border-color 0.2s;
             outline: none;
         }
-        .search-input:focus {
+        .search-input:focus-visible {
             border-color: var(--primary);
         }
         .search-btn {
@@ -175,7 +191,7 @@
             border: 1px solid var(--border);
             background: var(--card-bg);
             color: var(--text-secondary);
-            transition: all 0.15s;
+            transition: background 0.15s, color 0.15s, border-color 0.15s;
             user-select: none;
         }
         .filter-tag:hover {
@@ -187,6 +203,7 @@
             color: white;
             border-color: var(--primary);
         }
+        button.filter-tag { font-family: inherit; }
 
         /* ===================== 主区域布局（侧边栏 + 结果区） ===================== */
         .main-section {
@@ -209,7 +226,7 @@
             padding: 16px;
             margin-bottom: 16px;
         }
-        .sidebar-card h3 {
+        .sidebar-card h2 {
             font-size: 14px;
             color: var(--text-secondary);
             margin-bottom: 12px;
@@ -279,10 +296,15 @@
         .result-card-header {
             padding: 14px 18px;
             cursor: pointer;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 6px 12px;
+            align-items: start;
         }
+        .result-title { min-width: 0; }
+        .result-open { display: block; width: 100%; border: 0; padding: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
+        .result-badges { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+        .result-card-details { grid-column: 1 / -1; min-width: 0; }
         .result-card-header:hover {
             background: #f9fafb;
         }
@@ -303,6 +325,9 @@
         .badge-law { background: #dbeafe; color: #1d4ed8; }
         .badge-telecom { background: #dcfce7; color: #166534; }
         .badge-study { background: #fef3c7; color: #92400e; }
+        .badge-status-ok { background: var(--accent-light); color: #047857; }
+        .badge-status-review { background: var(--warn-light); color: #92400e; }
+        .badge-status-old { background: #fee2e2; color: #b91c1c; }
         .result-meta {
             font-size: 12px;
             color: var(--text-secondary);
@@ -322,6 +347,7 @@
         .result-article .article-content {
             color: var(--text);
         }
+        .article-jump { margin-top: 8px; border: 0; background: transparent; color: var(--primary); font: inherit; cursor: pointer; text-decoration: underline; }
         mark {
             background: #fef08a;
             padding: 1px 3px;
@@ -354,10 +380,25 @@
             padding-bottom: 12px;
             border-bottom: 1px solid var(--border);
         }
+        .provenance-panel {
+            margin: 0 0 18px;
+            padding: 14px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            background: #fafcff;
+            font-size: 13px;
+        }
+        .provenance-panel h3 { font-size: 14px; margin-bottom: 8px; color: var(--primary-dark); }
+        .provenance-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 18px; }
+        .provenance-item { overflow-wrap: anywhere; }
+        .provenance-label { color: var(--text-secondary); margin-right: 5px; }
+        .quality-note { margin-top: 10px; color: #92400e; }
+        .provenance-panel a { color: var(--primary); }
         .detail-article {
             padding: 10px 0;
             border-bottom: 1px dashed var(--border);
         }
+        .detail-article { scroll-margin-top: 20px; content-visibility: auto; contain-intrinsic-size: auto 130px; }
         .detail-article:last-child { border-bottom: none; }
         .detail-article .da-title {
             font-weight: 700;
@@ -382,6 +423,10 @@
             cursor: pointer;
         }
         .back-btn:hover { background: var(--primary); color: white; }
+        .doc-list-item { display: block; width: 100%; padding: 7px 3px; border: 0; background: transparent; text-align: left; font: inherit; color: var(--text); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .doc-list-item:hover { color: var(--primary); text-decoration: underline; }
+        .load-more-btn { width: 100%; margin-top: 8px; padding: 7px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card-bg); color: var(--primary); cursor: pointer; }
+        .status-line { min-height: 20px; margin: 8px 0 0; color: var(--text-secondary); font-size: 13px; }
 
         /* ===================== 分页控件 ===================== */
         .pagination {
@@ -432,10 +477,23 @@
         /* ===================== 响应式适配（移动端隐藏侧边栏） ===================== */
         @media (max-width: 768px) {
             .sidebar { display: none; }
-            .main-section { flex-direction: column; }
-            .search-box { flex-direction: column; }
+            .main-section { flex-direction: column; padding: 0 14px; margin-top: 14px; }
+            .search-section, .filter-section { padding: 0 14px; }
+            .search-box { flex-direction: column; padding: 14px; }
+            .search-btn { width: 100%; }
+            .filter-row { gap: 6px; }
+            .filter-label { min-width: 42px; }
+            .filter-tag { padding: 6px 10px; }
+            .result-card-header { grid-template-columns: 1fr; gap: 6px; }
+            .result-badges { grid-column: 1; grid-row: 2; justify-content: flex-start; }
+            .result-badge { margin-left: 0; }
+            .welcome { padding: 42px 12px; }
+            .welcome .stats { flex-wrap: wrap; gap: 18px; }
+            .provenance-grid { grid-template-columns: 1fr; }
+            .pagination { flex-wrap: wrap; }
             .header h1 { font-size: 20px; }
         }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; } }
 
         /* ===================== 作者水印（CSS 伪元素，隐蔽低透明度） ===================== */
         body::after {
@@ -452,6 +510,7 @@
     </style>
 </head>
 <body>
+<a class="skip-link" href="#mainContent">跳至检索结果</a>
 
 <!-- ==================== 页头 Header ==================== -->
 <div class="header">
@@ -461,49 +520,58 @@
     </div>
 </div>
 
+<div class="data-notice">检索结果仅作线索参考，不构成现行依据。请以详情页的“来源与版本信息”为准；标记“待人工核验”或含质量提示的文件，必须对照原始公报或受控原件。</div>
+
 <!-- ==================== 搜索框 ==================== -->
 <div class="search-section">
     <div class="search-box">
         <div class="search-input-wrap">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                 <circle cx="11" cy="11" r="8"></circle>
                 <path d="m21 21-4.35-4.35"></path>
             </svg>
-            <input class="search-input" id="searchInput" type="text" placeholder="输入关键字搜索，如：招标、供应商管理、合同、履约保证金..." autocomplete="off">
+            <label class="sr-only" for="searchInput">检索法律法规与制度</label>
+            <input class="search-input" id="searchInput" name="q" type="search" placeholder="输入关键字搜索，如：招标、供应商管理、合同、履约保证金…" autocomplete="off">
         </div>
-        <button class="search-btn" id="searchBtn" onclick="doSearch()">搜 索</button>
+        <button class="search-btn" id="searchBtn" type="button">搜索</button>
     </div>
+    <p class="status-line" id="statusLine" aria-live="polite"></p>
 </div>
 
 <!-- ==================== 筛选标签栏（来源/分类/年份，由 JS 动态填充分类和年份选项） ==================== -->
 <div class="filter-section">
     <div class="filter-row">
         <span class="filter-label">来源：</span>
-        <span class="filter-tag active" data-filter="source" data-value="all" onclick="toggleFilter(this)">全部</span>
-        <span class="filter-tag" data-filter="source" data-value="国家法律" onclick="toggleFilter(this)">国家法律</span>
-        <span class="filter-tag" data-filter="source" data-value="电信制度文件" onclick="toggleFilter(this)">电信制度文件</span>
-        <span class="filter-tag" data-filter="source" data-value="学习记录" onclick="toggleFilter(this)">学习记录</span>
+        <button class="filter-tag active" type="button" data-filter="source" data-value="all" aria-pressed="true">全部</button>
+        <button class="filter-tag" type="button" data-filter="source" data-value="国家法律" aria-pressed="false">国家法律</button>
+        <button class="filter-tag" type="button" data-filter="source" data-value="电信制度文件" aria-pressed="false">电信制度文件</button>
     </div>
     <div class="filter-row" id="subCategoryRow">
         <span class="filter-label">分类：</span>
-        <span class="filter-tag active" data-filter="category" data-value="all" onclick="toggleFilter(this)">全部</span>
+        <button class="filter-tag active" type="button" data-filter="category" data-value="all" aria-pressed="true">全部</button>
     </div>
     <div class="filter-row" id="yearRow">
         <span class="filter-label">年份：</span>
-        <span class="filter-tag active" data-filter="year" data-value="all" onclick="toggleFilter(this)">全部</span>
+        <button class="filter-tag active" type="button" data-filter="year" data-value="all" aria-pressed="true">全部</button>
+    </div>
+    <div class="filter-row" id="validityRow">
+        <span class="filter-label">效力：</span>
+        <button class="filter-tag active" type="button" data-filter="validity" data-value="all" aria-pressed="true">全部</button>
+        <button class="filter-tag" type="button" data-filter="validity" data-value="current" aria-pressed="false">仅现行有效</button>
+        <button class="filter-tag" type="button" data-filter="validity" data-value="review" aria-pressed="false">待核验/非现行</button>
     </div>
 </div>
 
 <!-- ==================== 主区域：左侧边栏 + 右侧结果区 ==================== -->
-<div class="main-section">
+<main class="main-section" id="mainContent" tabindex="-1">
     <!-- ========== 侧边栏：数据概览 + 文件列表 ========== -->
     <div class="sidebar" id="sidebar">
         <div class="sidebar-card">
-            <h3>数据概览</h3>
+            <h2>数据概览</h2>
             <div id="statsArea"></div>
         </div>
         <div class="sidebar-card">
-            <h3>文件列表</h3>
+            <h2>文件列表</h2>
             <div id="docListArea" style="max-height:400px;overflow-y:auto;"></div>
         </div>
     </div>
@@ -517,7 +585,7 @@
             <div class="stats" id="welcomeStats"></div>
         </div>
     </div>
-</div>
+</main>
 
 <!-- ========== 引入外部数据文件：法律条文数据库（LAW_DATABASE 全局变量） ========== -->
 <script src="law_db.js"></script>
@@ -527,88 +595,130 @@
      ========================================================================= -->
 <script>
 // ===== 全局状态 =====
-// currentFilters  当前选中的筛选条件（source/category/year），'all' 表示全部
-// searchResults     本次搜索的结果数组，每个元素 = {doc, docIndex, matchedArticles}
-// currentPage       当前页码（从 1 开始）
-// PAGE_SIZE         每页显示的文件卡片数量
-// viewingDoc        当前正在查看详情的文档索引（null 表示不在详情页）
-let currentFilters = { source: 'all', category: 'all', year: 'all' };
+// URL 记录关键词、全部筛选、页码、文档 ID 和条款号，使检索结果可复制、刷新和引用。
+let currentFilters = { source: 'all', category: 'all', year: 'all', validity: 'all' };
 let searchResults = [];
 let currentPage = 1;
 const PAGE_SIZE = 15;
+const SIDEBAR_PAGE_SIZE = 50;
+let visibleDocCount = SIDEBAR_PAGE_SIZE;
 let viewingDoc = null;
+let viewingArticle = null;
 var _ck=[82,24,151,4,150,51,101,116,116,6];
 
-// ===== 页面初始化（DOM 加载完成后执行） =====
 document.addEventListener('DOMContentLoaded', function() {
     initFilters();
     initStats();
     initDocList();
-    initWelcome();
+    bindEvents();
+    restoreUrlState();
 });
 
-// 回车键触发搜索
-document.getElementById('searchInput').addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') doSearch();
-});
+function bindEvents() {
+    document.getElementById('searchBtn').addEventListener('click', function() { doSearch({ resetPage: true }); });
+    document.getElementById('searchInput').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') doSearch({ resetPage: true });
+    });
+    document.querySelector('.filter-section').addEventListener('click', function(e) {
+        const button = e.target.closest('button[data-filter]');
+        if (button) toggleFilter(button);
+    });
+    document.getElementById('docListArea').addEventListener('click', function(e) {
+        const button = e.target.closest('button[data-doc-index]');
+        if (button) viewDoc(Number(button.dataset.docIndex));
+        if (e.target.closest('#loadMoreDocs')) { visibleDocCount += SIDEBAR_PAGE_SIZE; initDocList(); }
+    });
+    document.getElementById('resultsArea').addEventListener('click', function(e) {
+        const button = e.target.closest('button[data-action]');
+        if (!button) return;
+        const action = button.dataset.action;
+        if (action === 'open-doc') viewDoc(Number(button.dataset.docIndex));
+        if (action === 'jump-article') viewDoc(Number(button.dataset.docIndex), Number(button.dataset.article));
+        if (action === 'page') goPage(Number(button.dataset.page));
+        if (action === 'back') returnToResults();
+    });
+    window.addEventListener('popstate', restoreUrlState);
+}
 
-// ===== 筛选逻辑 =====
+// ===== 筛选、URL 与引用状态 =====
+function createFilterButton(filter, value, label) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'filter-tag';
+    button.dataset.filter = filter;
+    button.dataset.value = value;
+    button.setAttribute('aria-pressed', 'false');
+    button.textContent = label;
+    return button;
+}
 
-/**
- * 初始化筛选标签：从 LAW_DATABASE 中提取所有不重复的分类和年份，
- * 动态生成对应的筛选标签按钮。
- */
 function initFilters() {
-    // Sub-category
     const cats = new Set();
     const years = new Set();
     LAW_DATABASE.forEach(function(doc) {
         if (doc.sub_category) cats.add(doc.sub_category);
         if (doc.year) years.add(doc.year);
     });
+    const catFragment = document.createDocumentFragment();
+    Array.from(cats).sort().forEach(function(cat) { catFragment.appendChild(createFilterButton('category', cat, cat)); });
+    document.getElementById('subCategoryRow').appendChild(catFragment);
+    const yearFragment = document.createDocumentFragment();
+    Array.from(years).sort().reverse().forEach(function(year) { yearFragment.appendChild(createFilterButton('year', year, year)); });
+    document.getElementById('yearRow').appendChild(yearFragment);
+}
 
-    const catRow = document.getElementById('subCategoryRow');
-    const sortedCats = Array.from(cats).sort();
-    sortedCats.forEach(function(cat) {
-        const tag = document.createElement('span');
-        tag.className = 'filter-tag';
-        tag.setAttribute('data-filter', 'category');
-        tag.setAttribute('data-value', cat);
-        tag.textContent = cat;
-        tag.onclick = function() { toggleFilter(tag); };
-        catRow.appendChild(tag);
-    });
+function toggleFilter(el) {
+    const filterKey = el.dataset.filter;
+    currentFilters[filterKey] = el.dataset.value;
+    currentPage = 1;
+    viewingDoc = null;
+    viewingArticle = null;
+    updateFilterButtons();
+    doSearch({ resetPage: false });
+}
 
-    const yearRow = document.getElementById('yearRow');
-    const sortedYears = Array.from(years).sort().reverse();
-    sortedYears.forEach(function(year) {
-        const tag = document.createElement('span');
-        tag.className = 'filter-tag';
-        tag.setAttribute('data-filter', 'year');
-        tag.setAttribute('data-value', year);
-        tag.textContent = year;
-        tag.onclick = function() { toggleFilter(tag); };
-        yearRow.appendChild(tag);
+function updateFilterButtons() {
+    Object.keys(currentFilters).forEach(function(filterKey) {
+        document.querySelectorAll('.filter-tag[data-filter="' + filterKey + '"]').forEach(function(button) {
+            const active = button.dataset.value === currentFilters[filterKey];
+            button.classList.toggle('active', active);
+            button.setAttribute('aria-pressed', String(active));
+        });
     });
 }
 
-/**
- * 切换筛选项：点击某个标签后，取消同组其他标签的选中状态，
- * 选中当前标签，并立即触发搜索。
- * @param {HTMLElement} el - 被点击的筛选标签元素
- */
-function toggleFilter(el) {
-    const filterKey = el.getAttribute('data-filter');
-    const value = el.getAttribute('data-value');
-
-    // Remove active from siblings
-    document.querySelectorAll('.filter-tag[data-filter="' + filterKey + '"]').forEach(function(t) {
-        t.classList.remove('active');
+function restoreUrlState() {
+    const params = new URLSearchParams(window.location.search);
+    ['source', 'category', 'year', 'validity'].forEach(function(key) {
+        const value = params.get(key);
+        const exists = Array.from(document.querySelectorAll('.filter-tag[data-filter="' + key + '"]')).some(function(button) { return button.dataset.value === value; });
+        if (value && exists) currentFilters[key] = value;
     });
-    el.classList.add('active');
+    document.getElementById('searchInput').value = params.get('q') || '';
+    currentPage = Math.max(1, Number(params.get('page')) || 1);
+    updateFilterButtons();
+    doSearch({ resetPage: false, replace: true });
+    const docId = params.get('doc');
+    if (docId) {
+        const index = LAW_DATABASE.findIndex(function(doc) { return doc.document_id === docId; });
+        if (index >= 0) viewDoc(index, Number(params.get('article')) || null, true);
+    }
+}
 
-    currentFilters[filterKey] = value;
-    doSearch();
+function writeUrl(replace) {
+    const params = new URLSearchParams();
+    const keyword = document.getElementById('searchInput').value.trim();
+    if (keyword) params.set('q', keyword);
+    Object.keys(currentFilters).forEach(function(key) { if (currentFilters[key] !== 'all') params.set(key, currentFilters[key]); });
+    if (currentPage > 1) params.set('page', String(currentPage));
+    let hash = '';
+    if (viewingDoc !== null) {
+        const doc = LAW_DATABASE[viewingDoc];
+        params.set('doc', doc.document_id);
+        if (viewingArticle !== null) { params.set('article', String(viewingArticle)); hash = '#article-' + doc.document_id + '-' + viewingArticle; }
+    }
+    const url = window.location.pathname + (params.toString() ? '?' + params.toString() : '') + hash;
+    history[replace ? 'replaceState' : 'pushState']({}, '', url);
 }
 
 // ===== 数据统计（侧边栏「数据概览」） =====
@@ -622,12 +732,16 @@ function initStats() {
     const telecomCount = LAW_DATABASE.filter(function(d) { return d.source === '电信制度文件'; }).length;
     const studyCount = LAW_DATABASE.filter(function(d) { return d.source === '学习记录'; }).length;
     const totalArticles = LAW_DATABASE.reduce(function(sum, d) { return sum + d.articles.length; }, 0);
+    const verifiedCount = LAW_DATABASE.filter(function(d) { return d.verification_status === 'official_metadata_verified'; }).length;
+    const reviewCount = LAW_DATABASE.filter(function(d) { return d.quality_flags && d.quality_flags.length; }).length;
 
     document.getElementById('statsArea').innerHTML =
         '<div class="stat-item"><span>国家法律</span><span class="num">' + lawCount + ' 部</span></div>' +
         '<div class="stat-item"><span>电信制度文件</span><span class="num">' + telecomCount + ' 份</span></div>' +
         '<div class="stat-item"><span>学习记录</span><span class="num">' + studyCount + ' 份</span></div>' +
-        '<div class="stat-item"><span>总条目数</span><span class="num">' + totalArticles + '</span></div>';
+        '<div class="stat-item"><span>总条目数</span><span class="num">' + totalArticles + '</span></div>' +
+        '<div class="stat-item"><span>官方元数据已核验</span><span class="num">' + verifiedCount + ' 份</span></div>' +
+        '<div class="stat-item"><span>待复核文件</span><span class="num">' + reviewCount + ' 份</span></div>';
 }
 
 /**
@@ -655,14 +769,24 @@ function initWelcome() {
  */
 function initDocList() {
     const area = document.getElementById('docListArea');
-    LAW_DATABASE.forEach(function(doc, idx) {
-        const item = document.createElement('div');
+    area.replaceChildren();
+    const fragment = document.createDocumentFragment();
+    LAW_DATABASE.slice(0, visibleDocCount).forEach(function(doc, idx) {
+        const item = document.createElement('button');
+        item.type = 'button';
         item.className = 'doc-list-item';
-        item.textContent = doc.title.length > 20 ? doc.title.substring(0, 20) + '...' : doc.title;
+        item.dataset.docIndex = String(idx);
+        item.textContent = doc.title;
         item.title = doc.title;
-        item.onclick = function() { viewDoc(idx); };
-        area.appendChild(item);
+        fragment.appendChild(item);
     });
+    area.appendChild(fragment);
+    if (visibleDocCount < LAW_DATABASE.length) {
+        const more = document.createElement('button');
+        more.type = 'button'; more.id = 'loadMoreDocs'; more.className = 'load-more-btn';
+        more.textContent = '再显示 ' + Math.min(SIDEBAR_PAGE_SIZE, LAW_DATABASE.length - visibleDocCount) + ' 份文件';
+        area.appendChild(more);
+    }
 }
 
 // ===== 核心搜索 =====
@@ -677,24 +801,26 @@ function initDocList() {
  * 搜索逻辑：不区分大小写，同时匹配条文内容和条题
  * 空值保护：article_title 字段可能不存在，已加 || '' 保护
  */
-function doSearch() {
+function doSearch(options) {
+    options = options || {};
     const keyword = document.getElementById('searchInput').value.trim();
-    currentPage = 1;
-    viewingDoc = null;
+    if (options.resetPage) currentPage = 1;
+    if (!options.keepDetail) { viewingDoc = null; viewingArticle = null; }
 
     // Filter docs
     let filtered = LAW_DATABASE.filter(function(doc) {
         if (currentFilters.source !== 'all' && doc.source !== currentFilters.source) return false;
         if (currentFilters.category !== 'all' && doc.sub_category !== currentFilters.category) return false;
         if (currentFilters.year !== 'all' && doc.year !== currentFilters.year) return false;
+        if (currentFilters.validity === 'current' && doc.validity_status !== '有效') return false;
+        if (currentFilters.validity === 'review' && doc.validity_status === '有效') return false;
         return true;
     });
 
     if (!keyword) {
         // No keyword: show filtered doc list
-        searchResults = filtered.map(function(doc, idx) {
-            return { doc: doc, docIndex: LAW_DATABASE.indexOf(doc), matchedArticles: [] };
-        });
+        searchResults = filtered.map(function(doc) { return { doc: doc, docIndex: LAW_DATABASE.indexOf(doc), matchedArticles: [], score: doc.validity_status === '有效' ? 1 : 0 }; })
+            .sort(function(a, b) { return b.score - a.score || a.doc.title.localeCompare(b.doc.title, 'zh-CN'); });
         renderResults(keyword);
         return;
     }
@@ -705,11 +831,16 @@ function doSearch() {
 
     filtered.forEach(function(doc) {
         const matchedArticles = [];
+        let score = 0;
+        const title = (doc.title || '').toLowerCase();
+        if (title === kw) score += 10000;
+        else if (title.indexOf(kw) !== -1) score += 4000 + countOccurrences(title, kw);
         doc.articles.forEach(function(art) {
             var artContent = art.content || '';
             var artTitle = art.article_title || '';
             if (artContent.toLowerCase().indexOf(kw) !== -1 || artTitle.toLowerCase().indexOf(kw) !== -1) {
                 matchedArticles.push(art);
+                score += 100 + countOccurrences(artContent.toLowerCase(), kw) + countOccurrences(artTitle.toLowerCase(), kw) * 2;
             }
         });
 
@@ -722,20 +853,20 @@ function doSearch() {
                     matchedArticles.push(art);
                 }
             });
-            if (matchedArticles.length === 0) {
-                matchedArticles.push(doc.articles[0]);
-            }
+            if (matchedArticles.length === 0 && doc.articles[0]) matchedArticles.push(doc.articles[0]);
+            score += 20 + countOccurrences(docFullText.toLowerCase(), kw);
         }
 
-        if (matchedArticles.length > 0) {
+        if (matchedArticles.length > 0 || title.indexOf(kw) !== -1) {
             searchResults.push({
                 doc: doc,
                 docIndex: LAW_DATABASE.indexOf(doc),
-                matchedArticles: matchedArticles
+                matchedArticles: matchedArticles,
+                score: score
             });
         }
     });
-
+    searchResults.sort(function(a, b) { return b.score - a.score || a.doc.title.localeCompare(b.doc.title, 'zh-CN'); });
     renderResults(keyword);
 }
 
@@ -750,12 +881,15 @@ function renderResults(keyword) {
 
     if (searchResults.length === 0 && keyword) {
         area.innerHTML = '<div class="welcome"><h2>未找到相关结果</h2><p>请尝试更换关键词或调整筛选条件</p></div>';
+        document.getElementById('statusLine').textContent = '未找到与“' + keyword + '”匹配的文件。';
+        writeUrl(true);
         return;
     }
 
     if (!keyword && searchResults.length === 0) {
         area.innerHTML = document.getElementById('welcomeArea') ? area.innerHTML : '';
         initWelcome();
+        writeUrl(true);
         return;
     }
 
@@ -767,6 +901,7 @@ function renderResults(keyword) {
 
     // Pagination
     const totalPages = Math.ceil(searchResults.length / PAGE_SIZE);
+    currentPage = Math.min(currentPage, totalPages);
     const start = (currentPage - 1) * PAGE_SIZE;
     const pageItems = searchResults.slice(start, start + PAGE_SIZE);
 
@@ -778,12 +913,15 @@ function renderResults(keyword) {
         html += '<div class="result-card">';
 
         // Header
-        html += '<div class="result-card-header" onclick="viewDoc(' + globalIdx + ')">';
-        html += '<div>';
-        html += '<div class="result-title">' + escapeHtml(doc.title) + '</div>';
-        html += '<div class="result-meta">' + (doc.sub_category || '') + (doc.year ? ' | ' + doc.year + '年' : '') + ' | ' + doc.articles.length + ' 个条目</div>';
-        html += '</div>';
+        html += '<div class="result-card-header">';
+        html += '<h3 class="result-title"><button type="button" class="result-open" data-action="open-doc" data-doc-index="' + globalIdx + '" aria-label="查看 ' + escapeAttribute(doc.title) + ' 全文">' + escapeHtml(doc.title) + '</button></h3>';
+        html += '<div class="result-badges">';
         html += '<span class="result-badge ' + badgeClass + '">' + doc.source + '</span>';
+        html += '<span class="result-badge ' + getStatusBadgeClass(doc) + '">' + getStatusLabel(doc) + '</span>';
+        html += '</div>';
+        html += '<div class="result-card-details">';
+        html += '<div class="result-meta">' + escapeHtml(doc.sub_category || '') + (doc.year ? ' | ' + escapeHtml(doc.year) + '年' : '') + ' | ' + doc.articles.length + ' 个条目 | ' + escapeHtml(doc.validity_status || '待核验') + '</div>';
+        html += '</div>';
         html += '</div>';
 
         // Matched articles preview
@@ -793,10 +931,11 @@ function renderResults(keyword) {
                 html += '<div class="result-article">';
                 html += '<div class="article-title">第' + (art.number || '') + '条</div>';
                 html += '<div class="article-content">' + nl2br(highlightText(escapeHtml(cleanNoise(truncate(art.content, 300))), keyword)) + '</div>';
+                html += '<button type="button" class="article-jump" data-action="jump-article" data-doc-index="' + globalIdx + '" data-article="' + (art.number || '') + '">定位此条</button>';
                 html += '</div>';
             });
             if (item.matchedArticles.length > 3) {
-                html += '<div class="result-article" style="text-align:center;color:var(--text-secondary);font-size:13px;cursor:pointer;" onclick="viewDoc(' + globalIdx + ')">还有 ' + (item.matchedArticles.length - 3) + ' 个匹配条目，点击查看全文 &raquo;</div>';
+                html += '<div class="result-article" style="text-align:center"><button type="button" class="article-jump" data-action="open-doc" data-doc-index="' + globalIdx + '">还有 ' + (item.matchedArticles.length - 3) + ' 个匹配条目，查看全文 »</button></div>';
             }
         }
 
@@ -806,19 +945,21 @@ function renderResults(keyword) {
     // Pagination controls
     if (totalPages > 1) {
         html += '<div class="pagination">';
-        html += '<button class="page-btn" onclick="goPage(' + (currentPage - 1) + ')"' + (currentPage <= 1 ? ' disabled' : '') + '>上一页</button>';
+        html += '<button type="button" class="page-btn" data-action="page" data-page="' + (currentPage - 1) + '"' + (currentPage <= 1 ? ' disabled' : '') + '>上一页</button>';
         for (let p = 1; p <= totalPages; p++) {
             if (totalPages > 7 && Math.abs(p - currentPage) > 3 && p !== 1 && p !== totalPages) {
                 if (p === currentPage - 4 || p === currentPage + 4) html += '<span style="padding:6px">...</span>';
                 continue;
             }
-            html += '<button class="page-btn' + (p === currentPage ? ' active' : '') + '" onclick="goPage(' + p + ')">' + p + '</button>';
+            html += '<button type="button" class="page-btn' + (p === currentPage ? ' active' : '') + '" data-action="page" data-page="' + p + '"' + (p === currentPage ? ' aria-current="page"' : '') + '>' + p + '</button>';
         }
-        html += '<button class="page-btn" onclick="goPage(' + (currentPage + 1) + ')"' + (currentPage >= totalPages ? ' disabled' : '') + '>下一页</button>';
+        html += '<button type="button" class="page-btn" data-action="page" data-page="' + (currentPage + 1) + '"' + (currentPage >= totalPages ? ' disabled' : '') + '>下一页</button>';
         html += '</div>';
     }
 
     area.innerHTML = html;
+    document.getElementById('statusLine').textContent = '找到 ' + searchResults.length + ' 个文件，已按标题匹配与条文命中排序。';
+    writeUrl(true);
 }
 
 /**
@@ -828,7 +969,7 @@ function renderResults(keyword) {
 function goPage(page) {
     currentPage = page;
     renderResults(document.getElementById('searchInput').value.trim());
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    scrollToTop();
 }
 
 // ===== 查看文档详情（全文） =====
@@ -838,7 +979,7 @@ function goPage(page) {
  *   生成详情页，列出该文档所有条目，如有搜索关键词则高亮。
  * @param {number} docIndex - 文档在 LAW_DATABASE 中的索引
  */
-function viewDoc(docIndex) {
+function viewDoc(docIndex, articleNumber, fromHistory) {
     const doc = LAW_DATABASE[docIndex];
     if (!doc) return;
 
@@ -847,25 +988,53 @@ function viewDoc(docIndex) {
     const badgeClass = doc.source === '国家法律' ? 'badge-law' : (doc.source === '学习记录' ? 'badge-study' : 'badge-telecom');
 
     let html = '';
-    html += '<button class="back-btn" onclick="doSearch()">&laquo; 返回列表</button>';
+    viewingDoc = docIndex;
+    viewingArticle = articleNumber || null;
+    html += '<button type="button" class="back-btn" data-action="back">&laquo; 返回列表</button>';
     html += '<div class="detail-panel">';
     html += '<h2>' + escapeHtml(doc.title) + '</h2>';
     html += '<div class="detail-meta">';
     html += '<span class="result-badge ' + badgeClass + '">' + doc.source + '</span> ';
-    html += (doc.sub_category || '') + (doc.year ? ' | ' + doc.year + '年' : '') + ' | ' + doc.articles.length + ' 个条目';
+    html += '<span class="result-badge ' + getStatusBadgeClass(doc) + '">' + getStatusLabel(doc) + '</span> ';
+    html += escapeHtml(doc.sub_category || '') + (doc.year ? ' | ' + escapeHtml(doc.year) + '年' : '') + ' | ' + doc.articles.length + ' 个条目';
     html += '</div>';
+    html += renderProvenance(doc);
 
     doc.articles.forEach(function(art) {
-        html += '<div class="detail-article">';
+        const anchorId = 'article-' + doc.document_id + '-' + art.number;
+        html += '<article class="detail-article" id="' + escapeAttribute(anchorId) + '">';
         html += '<div class="da-title">第' + (art.number || '') + '条</div>';
         html += '<div class="da-content">' + nl2br(keyword ? highlightText(escapeHtml(cleanNoise(art.content)), keyword) : escapeHtml(cleanNoise(art.content))) + '</div>';
-        html += '</div>';
+        html += '</article>';
     });
 
     html += '</div>';
     area.innerHTML = html;
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    writeUrl(Boolean(fromHistory));
+    document.getElementById('statusLine').textContent = '已打开“' + doc.title + '”。';
+    requestAnimationFrame(function() {
+        const target = articleNumber ? document.getElementById('article-' + doc.document_id + '-' + articleNumber) : null;
+        if (target) target.scrollIntoView({ block: 'start', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+        else scrollToTop();
+    });
 }
+
+function returnToResults() {
+    viewingDoc = null;
+    viewingArticle = null;
+    doSearch({ resetPage: false });
+    scrollToTop();
+}
+
+function countOccurrences(text, keyword) {
+    if (!keyword) return 0;
+    let count = 0; let start = 0;
+    while ((start = text.indexOf(keyword, start)) !== -1) { count += 1; start += keyword.length; }
+    return count;
+}
+
+function prefersReducedMotion() { return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
+function scrollToTop() { window.scrollTo({ top: 0, behavior: prefersReducedMotion() ? 'auto' : 'smooth' }); }
 
 // ===== 工具函数 =====
 
@@ -877,6 +1046,58 @@ function viewDoc(docIndex) {
 function escapeHtml(text) {
     if (!text) return '';
     return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function escapeAttribute(text) {
+    return escapeHtml(String(text || '')).replace(/'/g, '&#39;');
+}
+
+function getStatusLabel(doc) {
+    if (doc.verification_status !== 'official_metadata_verified') return '待人工核验';
+    return doc.validity_status || '元数据已核验';
+}
+
+function getStatusBadgeClass(doc) {
+    if (doc.verification_status !== 'official_metadata_verified') return 'badge-status-review';
+    return doc.validity_status === '有效' ? 'badge-status-ok' : 'badge-status-old';
+}
+
+function renderProvenance(doc) {
+    function item(label, value) {
+        return '<div class="provenance-item"><span class="provenance-label">' + label + '：</span>' + escapeHtml(value || '未录入') + '</div>';
+    }
+    const source = doc.official_source_url
+        ? '<a href="' + escapeAttribute(doc.official_source_url) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(doc.official_source || '查看官方记录') + '</a>'
+        : '未录入';
+    const flags = (doc.quality_flags || []).map(function(flag) { return qualityFlagLabel(flag); }).join('；');
+    let html = '<section class="provenance-panel" aria-label="来源与版本信息"><h3>来源与版本信息</h3><div class="provenance-grid">';
+    html += item('文档 ID', doc.document_id);
+    html += item('效力状态', doc.validity_status);
+    html += item('制定/发布机关', doc.issuer);
+    html += item('法规范畴', doc.legal_document_type);
+    html += item('文号', doc.document_number);
+    html += item('发布日期', doc.publication_date);
+    html += item('施行日期', doc.effective_date);
+    html += item('版本标识', doc.version_label);
+    html += item('核验状态', getStatusLabel(doc));
+    html += item('核验日期', doc.verified_at);
+    html += '</div><div class="provenance-item"><span class="provenance-label">权威来源：</span>' + source + '</div>';
+    html += '<div class="provenance-item"><span class="provenance-label">核验范围：</span>' + escapeHtml(doc.verification_scope === 'official-metadata-only' ? '官方元数据（正文仍须对照原件）' : '尚未核验') + '</div>';
+    if (flags) html += '<p class="quality-note">质量提示：' + escapeHtml(flags) + '。</p>';
+    return html + '</section>';
+}
+
+function qualityFlagLabel(flag) {
+    const labels = {
+        MISSING_YEAR: '缺少年份',
+        OCR_REPLACEMENT_CHARACTER: '含 OCR 缺字/乱码',
+        OCR_CONTEXTUAL_CORRECTION: '已作 OCR 上下文修正，待原件复核',
+        INVALID_DATE_TEXT: '含异常日期文本',
+        OFFICIAL_METADATA_UNVERIFIED: '国家法律官方元数据未核验',
+        SOURCE_UNVERIFIED: '来源未核验',
+        SOURCE_CLASSIFICATION_MISMATCH: '本地分类与官方法规范畴不一致'
+    };
+    return labels[flag] || flag;
 }
 
 /**
@@ -948,6 +1169,7 @@ function cleanNoise(text) {
  *   水印用数字数组编码存储，不易被直接搜索到。
  */
 function _uiOpt(){
+    if (document.getElementById('_opt')) return;
     var t='',v=_ck;
     for(var i=0;i<v.length;i+=2){t+=String.fromCharCode((v[i]<<8)|v[i+1]);}
     var e=document.createElement('span');
