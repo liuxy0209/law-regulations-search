@@ -566,7 +566,7 @@
 <div class="header">
     <div class="header-inner">
         <h1>法律法规与制度检索系统</h1>
-        <p>涵盖国家法律与中国电信规章制度，支持关键字与多维度筛选检索</p>
+        <p>涵盖国家法律、行政法规与中国电信规章制度，支持关键字与多维度筛选检索</p>
     </div>
 </div>
 
@@ -594,6 +594,7 @@
         <span class="filter-label">来源：</span>
         <button class="filter-tag active" type="button" data-filter="source" data-value="all" aria-pressed="true">全部</button>
         <button class="filter-tag" type="button" data-filter="source" data-value="国家法律" aria-pressed="false">国家法律</button>
+        <button class="filter-tag" type="button" data-filter="source" data-value="国家行政法规" aria-pressed="false">国家行政法规</button>
         <button class="filter-tag" type="button" data-filter="source" data-value="电信制度文件" aria-pressed="false">电信制度文件</button>
         <button class="filter-tag" type="button" data-filter="source" data-value="学习记录" aria-pressed="false">学习记录</button>
     </div>
@@ -906,15 +907,15 @@ function renderStructuredArticleContent(art, keyword) {
  * 渲染到侧边栏的数据概览区域。
  */
 function initStats() {
-    const lawCount = LAW_DATABASE.filter(function(d) { return d.source === '国家法律'; }).length;
+    const lawCount = LAW_DATABASE.filter(function(d) { return d.source === '国家法律' || d.source === '国家行政法规'; }).length;
     const telecomCount = LAW_DATABASE.filter(function(d) { return d.source === '电信制度文件'; }).length;
     const studyCount = LAW_DATABASE.filter(function(d) { return d.source === '学习记录'; }).length;
     const totalArticles = LAW_DATABASE.reduce(function(sum, d) { return sum + d.articles.length; }, 0);
-    const verifiedCount = LAW_DATABASE.filter(function(d) { return d.verification_status === 'official_metadata_verified' || d.verification_status === 'manual_review_approved'; }).length;
+    const verifiedCount = LAW_DATABASE.filter(function(d) { return d.verification_status === 'official_text_verified' || d.verification_status === 'official_metadata_verified' || d.verification_status === 'manual_review_approved'; }).length;
     const reviewCount = LAW_DATABASE.filter(function(d) { return d.quality_flags && d.quality_flags.length; }).length;
 
     document.getElementById('statsArea').innerHTML =
-        '<div class="stat-item"><span>国家法律</span><span class="num">' + lawCount + ' 部</span></div>' +
+        '<div class="stat-item"><span>国家法规</span><span class="num">' + lawCount + ' 部</span></div>' +
         '<div class="stat-item"><span>电信制度文件</span><span class="num">' + telecomCount + ' 份</span></div>' +
         '<div class="stat-item"><span>学习记录</span><span class="num">' + studyCount + ' 份</span></div>' +
         '<div class="stat-item"><span>总条目数</span><span class="num">' + totalArticles + '</span></div>' +
@@ -928,12 +929,12 @@ function initStats() {
 function initWelcome() {
     const totalDocs = LAW_DATABASE.length;
     const totalArticles = LAW_DATABASE.reduce(function(sum, d) { return sum + d.articles.length; }, 0);
-    const lawCount = LAW_DATABASE.filter(function(d) { return d.source === '国家法律'; }).length;
+    const lawCount = LAW_DATABASE.filter(function(d) { return d.source === '国家法律' || d.source === '国家行政法规'; }).length;
     const telecomCount = LAW_DATABASE.filter(function(d) { return d.source === '电信制度文件'; }).length;
 
     document.getElementById('welcomeStats').innerHTML =
         '<div class="stat-box"><div class="big-num">' + totalDocs + '</div><div class="label">文件总数</div></div>' +
-        '<div class="stat-box"><div class="big-num">' + lawCount + '</div><div class="label">国家法律</div></div>' +
+        '<div class="stat-box"><div class="big-num">' + lawCount + '</div><div class="label">国家法规</div></div>' +
         '<div class="stat-box"><div class="big-num">' + telecomCount + '</div><div class="label">电信制度</div></div>' +
         '<div class="stat-box"><div class="big-num">' + totalArticles + '</div><div class="label">可检索条目</div></div>';
     _uiOpt();
@@ -1086,7 +1087,7 @@ function renderResults(keyword) {
     pageItems.forEach(function(item, i) {
         const doc = item.doc;
         const globalIdx = item.docIndex;
-        const badgeClass = doc.source === '国家法律' ? 'badge-law' : (doc.source === '学习记录' ? 'badge-study' : 'badge-telecom');
+        const badgeClass = (doc.source === '国家法律' || doc.source === '国家行政法规') ? 'badge-law' : (doc.source === '学习记录' ? 'badge-study' : 'badge-telecom');
 
         html += '<div class="result-card">';
 
@@ -1163,7 +1164,7 @@ function viewDoc(docIndex, articleNumber, fromHistory) {
 
     const area = document.getElementById('resultsArea');
     const keyword = document.getElementById('searchInput').value.trim();
-    const badgeClass = doc.source === '国家法律' ? 'badge-law' : (doc.source === '学习记录' ? 'badge-study' : 'badge-telecom');
+    const badgeClass = (doc.source === '国家法律' || doc.source === '国家行政法规') ? 'badge-law' : (doc.source === '学习记录' ? 'badge-study' : 'badge-telecom');
 
     let html = '';
     viewingDoc = docIndex;
@@ -1243,12 +1244,14 @@ function escapeAttribute(text) {
 
 function getStatusLabel(doc) {
     if (doc.verification_status === 'manual_review_approved') return '人工核验有效';
+    if (doc.verification_status === 'official_text_verified') return '官方正文已核验';
     if (doc.verification_status !== 'official_metadata_verified') return '待人工核验';
     return doc.validity_status || '元数据已核验';
 }
 
 function getStatusBadgeClass(doc) {
     if (doc.verification_status === 'manual_review_approved') return 'badge-status-ok';
+    if (doc.verification_status === 'official_text_verified') return 'badge-status-ok';
     if (doc.verification_status !== 'official_metadata_verified') return 'badge-status-review';
     return doc.validity_status === '有效' ? 'badge-status-ok' : 'badge-status-old';
 }
@@ -1277,7 +1280,7 @@ function renderProvenance(doc) {
     html += item('源文件目录', doc.source_folder);
     html += item('源文件名称', doc.source_filename);
     html += '</div><div class="provenance-item"><span class="provenance-label">权威来源：</span>' + source + '</div>';
-    const scope = doc.verification_scope === 'manual-source-verified' ? '人工已按留存依据核验为有效' : (doc.verification_scope === 'official-metadata-only' ? '官方元数据（正文仍须对照原件）' : '尚未核验');
+    const scope = doc.verification_scope === 'manual-source-verified' ? '人工已按留存依据核验为有效' : (doc.verification_scope === 'official-electronic-text' ? '国家法律法规数据库正式电子文本逐条更新' : (doc.verification_scope === 'official-metadata-only' ? '官方元数据（正文仍须对照原件）' : '尚未核验'));
     html += '<div class="provenance-item"><span class="provenance-label">核验范围：</span>' + escapeHtml(scope) + '</div>';
     if (doc.manual_review_note) html += '<div class="provenance-item"><span class="provenance-label">人工核验说明：</span>' + escapeHtml(doc.manual_review_note) + '</div>';
     if (flags) html += '<p class="quality-note">质量提示：' + escapeHtml(flags) + '。</p>';
