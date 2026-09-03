@@ -414,12 +414,15 @@
         .da-content p { margin: 0 0 9px; }
         .da-content p:last-child { margin-bottom: 0; }
         .article-lead { color: var(--text); }
-        .article-item { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px; align-items: start; margin: 8px 0; padding: 8px 10px; border-radius: 7px; background: #f8fafc; }
-        .article-item.level-2 { margin-left: 22px; padding-left: 12px; background: #fbfdff; border-left: 2px solid #bfdbfe; }
+        .article-item { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px; align-items: start; margin: 8px 0; padding: 8px 10px; border-radius: 7px; }
+        .article-item.level-1 { background: #f1f5f9; border-left: 3px solid #2563eb; }
+        .article-item.level-2 { margin-left: 22px; padding-left: 12px; background: #f8fbff; border-left: 2px solid #93c5fd; }
+        .article-item.level-3 { margin-left: 44px; padding: 5px 0 5px 12px; border-left: 1px dashed #bfdbfe; }
+        .article-item.level-4 { margin-left: 66px; padding: 4px 0 4px 12px; border-left: 1px dotted #bfdbfe; }
         .article-marker { color: var(--primary-dark); font-weight: 700; white-space: nowrap; }
         .article-item-body { min-width: 0; }
         .article-chapter { margin: 18px 0 4px; color: var(--primary-dark); font-weight: 700; font-size: 16px; }
-        @media (max-width: 600px) { .article-item.level-2 { margin-left: 10px; } .article-item { padding: 7px 8px; gap: 6px; } }
+        @media (max-width: 600px) { .article-item.level-2 { margin-left: 10px; } .article-item.level-3 { margin-left: 20px; } .article-item.level-4 { margin-left: 30px; } .article-item { padding: 7px 8px; gap: 6px; } }
         .back-btn {
             display: inline-block;
             margin-bottom: 16px;
@@ -866,7 +869,8 @@ function renderArticleText(text, keyword) {
         }).join('');
     };
     // 仅识别原文行首的编号：不会把正文里提到的“第1条”或普通数字误拆成新项。
-    const marker = /(^|\n)\s*((?:\d+|[一二三四五六七八九十百千万]+)[、．.]|[（(]\s*(?:\d+|[一二三四五六七八九十百千万]+)\s*[）)])/gm;
+    // 原文层级：一、 → （一） → 1. → （1）。
+    const marker = /(^|\n)\s*([一二三四五六七八九十百千万]+[、．.]|[（(]\s*[一二三四五六七八九十百千万]+\s*[）)]|\d+[、．.]|[（(]\s*\d+\s*[）)])/gm;
     const items = [], matches = [];
     let match;
     while ((match = marker.exec(plain))) matches.push({ start: match.index + match[1].length, marker: match[2].replace(/\s+/g, '') });
@@ -877,7 +881,10 @@ function renderArticleText(text, keyword) {
         const next = matches[index + 1];
         const content = plain.slice(item.start + item.marker.length, next ? next.start : plain.length).trim();
         if (!content) return;
-        const level = /^[（(]/.test(item.marker) ? 2 : 1;
+        let level = 1;
+        if (/^[（(][一二三四五六七八九十百千万]/.test(item.marker)) level = 2;
+        else if (/^\d/.test(item.marker)) level = 3;
+        else if (/^[（(]\d/.test(item.marker)) level = 4;
         items.push('<div class="article-item level-' + level + '"><span class="article-marker">' + escapeHtml(item.marker) + '</span><div class="article-item-body">' + renderParagraphs(content) + '</div></div>');
     });
     return html + items.join('');
@@ -1342,7 +1349,11 @@ function cleanNoise(text) {
     if (!text) return text;
     return text
         .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '') // 先清除所有控制字符（保留\t\n\r）
-        .replace(/—\s*\d+\s*—/g, '')        // 页码标记 — 12 —
+        // 移除单独占行的页码并把前后文字接回同一段，避免“-4-”把一句话断成两段。
+        .replace(/\n\s*[-—–]\s*\d{1,4}\s*[-—–]\s*\n/g, '\n')
+        .replace(/(?:^|\n)\s*[-—–]\s*\d{1,4}\s*[-—–]\s*(?=\n|$)/g, '\n')
+        .replace(/—\s*\d+\s*—/g, '')        // 兼容行内页码标记 — 12 —
+        .replace(/-\s*\d+\s*-/g, '')         // 兼容行内页码标记 - 12 -
         .replace(/□\s*\d+\s*□/g, '')         // 页码标记 □ 3 □
         .replace(/\n\s*\d+\s*\n/g, '\n')     // 独占一行的数字（PDF页码残留）
         .replace(/　\d+\s*　/g, '')           // 中文空格+数字+中文空格
