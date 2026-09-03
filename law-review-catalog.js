@@ -149,7 +149,8 @@ window.LAW_REVIEW_CATALOG = [
     "source": "电信制度文件",
     "year": "2023",
     "quality_flags": [
-      "SOURCE_UNVERIFIED"
+      "SOURCE_UNVERIFIED",
+      "OCR_EXTRACTED_REQUIRES_MANUAL_REVIEW"
     ]
   },
   {
