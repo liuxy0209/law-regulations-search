@@ -411,6 +411,7 @@
             line-height: 1.8;
             color: var(--text);
         }
+        .article-chapter { margin: 18px 0 4px; color: var(--primary-dark); font-weight: 700; font-size: 16px; }
         .back-btn {
             display: inline-block;
             margin-bottom: 16px;
@@ -696,7 +697,7 @@ function bindEvents() {
         if (!button) return;
         const action = button.dataset.action;
         if (action === 'open-doc') viewDoc(Number(button.dataset.docIndex));
-        if (action === 'jump-article') viewDoc(Number(button.dataset.docIndex), Number(button.dataset.article));
+        if (action === 'jump-article') viewDoc(Number(button.dataset.docIndex), button.dataset.article);
         if (action === 'page') goPage(Number(button.dataset.page));
         if (action === 'back') returnToResults();
     });
@@ -815,7 +816,7 @@ function restoreUrlState() {
     const docId = params.get('doc');
     if (docId) {
         const index = LAW_DATABASE.findIndex(function(doc) { return doc.document_id === docId; });
-        if (index >= 0) viewDoc(index, Number(params.get('article')) || null, true);
+        if (index >= 0) viewDoc(index, params.get('article') || null, true);
     }
 }
 
@@ -833,6 +834,15 @@ function writeUrl(replace) {
     }
     const url = window.location.pathname + (params.toString() ? '?' + params.toString() : '') + hash;
     history[replace ? 'replaceState' : 'pushState']({}, '', url);
+}
+
+// 条目标题、锚点均以原制度的结构为准：条文、章节、通知前言及未编号全文不再一律伪装成“第X条”。
+function articleDisplayTitle(art) {
+    if (art.article_title) return art.article_title;
+    return art.number === '全文' ? '全文' : '第' + (art.number || '') + '条';
+}
+function articleKey(art, index) {
+    return art.article_id || ('number-' + String(art.number || index));
 }
 
 // ===== 数据统计（侧边栏「数据概览」） =====
@@ -1043,9 +1053,9 @@ function renderResults(keyword) {
             const previewArticles = item.matchedArticles.slice(0, 3);
             previewArticles.forEach(function(art) {
                 html += '<div class="result-article">';
-                html += '<div class="article-title">第' + (art.number || '') + '条</div>';
+                html += '<div class="article-title">' + escapeHtml(articleDisplayTitle(art)) + '</div>';
                 html += '<div class="article-content">' + nl2br(highlightText(escapeHtml(cleanNoise(truncate(art.content, 300))), keyword)) + '</div>';
-                html += '<button type="button" class="article-jump" data-action="jump-article" data-doc-index="' + globalIdx + '" data-article="' + (art.number || '') + '">定位此条</button>';
+                html += '<button type="button" class="article-jump" data-action="jump-article" data-doc-index="' + globalIdx + '" data-article="' + escapeAttribute(articleKey(art, item.matchedArticles.indexOf(art))) + '">定位此处</button>';
                 html += '</div>';
             });
             if (item.matchedArticles.length > 3) {
@@ -1114,10 +1124,16 @@ function viewDoc(docIndex, articleNumber, fromHistory) {
     html += '</div>';
     html += renderProvenance(doc);
 
-    doc.articles.forEach(function(art) {
-        const anchorId = 'article-' + doc.document_id + '-' + art.number;
+    let shownChapter = null;
+    doc.articles.forEach(function(art, articleIndex) {
+        const key = articleKey(art, articleIndex);
+        const anchorId = 'article-' + doc.document_id + '-' + key;
+        if (art.chapter && art.chapter !== shownChapter) {
+            html += '<div class="article-chapter">' + escapeHtml(art.chapter) + '</div>';
+            shownChapter = art.chapter;
+        }
         html += '<article class="detail-article" id="' + escapeAttribute(anchorId) + '">';
-        html += '<div class="da-title">' + (art.number === '全文' ? '全文' : '第' + (art.number || '') + '条') + '</div>';
+        html += '<div class="da-title">' + escapeHtml(articleDisplayTitle(art)) + '</div>';
         html += '<div class="da-content">' + nl2br(keyword ? highlightText(escapeHtml(cleanNoise(art.content)), keyword) : escapeHtml(cleanNoise(art.content))) + '</div>';
         html += '</article>';
     });
@@ -1127,7 +1143,12 @@ function viewDoc(docIndex, articleNumber, fromHistory) {
     writeUrl(Boolean(fromHistory));
     document.getElementById('statusLine').textContent = '已打开“' + doc.title + '”。';
     requestAnimationFrame(function() {
-        const target = articleNumber ? document.getElementById('article-' + doc.document_id + '-' + articleNumber) : null;
+        let target = articleNumber ? document.getElementById('article-' + doc.document_id + '-' + articleNumber) : null;
+        // 兼容旧版按“条号”分享的链接；新版使用唯一的 article_id，避免附件或手册重复条号造成跳转错误。
+        if (!target && articleNumber) {
+            const legacyIndex = doc.articles.findIndex(function(art) { return String(art.number) === String(articleNumber); });
+            if (legacyIndex >= 0) target = document.getElementById('article-' + doc.document_id + '-' + articleKey(doc.articles[legacyIndex], legacyIndex));
+        }
         if (target) target.scrollIntoView({ block: 'start', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
         else scrollToTop();
     });
