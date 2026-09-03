@@ -509,7 +509,7 @@
 
         /* ===================== 作者水印（CSS 伪元素，隐蔽低透明度） ===================== */
         body::after {
-            content: '\5218\9704\9633';
+            content: 'LiuXY整理';
             position: fixed;
             bottom: 3px;
             right: 10px;
@@ -527,11 +527,11 @@
             pointer-events: none;
             z-index: 1;
             opacity: 0.055;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='260' viewBox='0 0 360 260'%3E%3Ctext x='44' y='145' transform='rotate(-28 180 130)' fill='%231a56db' font-family='Arial,Microsoft YaHei,sans-serif' font-size='15' letter-spacing='2'%3ELiuXY%20%C2%B7%20%E5%88%98%E9%9C%84%E9%98%B3%E6%95%B4%E7%90%86%3C/text%3E%3C/svg%3E");
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='260' viewBox='0 0 360 260'%3E%3Ctext x='44' y='145' transform='rotate(-28 180 130)' fill='%231a56db' font-family='Arial,Microsoft YaHei,sans-serif' font-size='15' letter-spacing='2'%3ELiuXY%E6%95%B4%E7%90%86%3C/text%3E%3C/svg%3E");
             background-repeat: repeat;
         }
         body::after {
-            content: '© LiuXY · 刘霄阳整理';
+            content: 'LiuXY整理';
             bottom: 8px;
             right: 14px;
             font-size: 11px;
@@ -672,7 +672,7 @@ const SIDEBAR_PAGE_SIZE = 50;
 let visibleDocCount = SIDEBAR_PAGE_SIZE;
 let viewingDoc = null;
 let viewingArticle = null;
-var _ck=[82,24,151,4,150,51,101,116,116,6];
+var _ck=[0,76,0,105,0,117,0,88,0,89,101,116,116,6];
 const ADMIN_API_BASE = 'https://liuxy-law-admin.liuxy0209.workers.dev/api';
 
 document.addEventListener('DOMContentLoaded', function() {
