@@ -668,6 +668,12 @@ document.addEventListener('DOMContentLoaded', function() {
     bindEvents();
     restoreUrlState();
     recordAnonymousVisit();
+    applyApprovedManualReviews().then(function(changed) {
+        if (!changed) return;
+        initStats();
+        if (viewingDoc !== null) viewDoc(viewingDoc, viewingArticle, true);
+        else doSearch({ resetPage: false, keepDetail: true });
+    });
 });
 
 function bindEvents() {
@@ -702,6 +708,32 @@ function bindEvents() {
 
 function recordAnonymousVisit() {
     fetch(ADMIN_API_BASE + '/visit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: window.location.pathname }), keepalive: true }).catch(function() {});
+}
+
+// 管理员仅能在后台通过审核；公开页只读取已通过的结果，且始终保留核验依据与日期。
+// 请求失败时维持本地库原有状态，不把任何待核验文件误标为有效。
+async function applyApprovedManualReviews() {
+    try {
+        const response = await fetch(ADMIN_API_BASE + '/public/reviews', { cache: 'no-store' });
+        const result = await response.json();
+        if (!response.ok || !Array.isArray(result.items)) return false;
+        const approved = new Map(result.items.map(function(item) { return [item.document_id, item]; }));
+        let changed = false;
+        LAW_DATABASE.forEach(function(doc) {
+            const review = approved.get(doc.document_id);
+            if (!review || doc.verification_status !== 'pending_manual_verification') return;
+            doc.verification_status = 'manual_review_approved';
+            doc.validity_status = '有效';
+            doc.verified_at = review.reviewed_at || doc.verified_at;
+            doc.verification_scope = 'manual-source-verified';
+            doc.manual_review_reference = review.reference_url || null;
+            doc.manual_review_note = review.review_note || null;
+            doc.quality_flags = (doc.quality_flags || []).filter(function(flag) { return flag !== 'SOURCE_UNVERIFIED' && flag !== 'OFFICIAL_METADATA_UNVERIFIED'; });
+            if (!doc.quality_flags.length) doc.quality_review_status = 'metadata_checked';
+            changed = true;
+        });
+        return changed;
+    } catch (error) { return false; }
 }
 
 async function submitFeedback(event) {
@@ -813,7 +845,7 @@ function initStats() {
     const telecomCount = LAW_DATABASE.filter(function(d) { return d.source === '电信制度文件'; }).length;
     const studyCount = LAW_DATABASE.filter(function(d) { return d.source === '学习记录'; }).length;
     const totalArticles = LAW_DATABASE.reduce(function(sum, d) { return sum + d.articles.length; }, 0);
-    const verifiedCount = LAW_DATABASE.filter(function(d) { return d.verification_status === 'official_metadata_verified'; }).length;
+    const verifiedCount = LAW_DATABASE.filter(function(d) { return d.verification_status === 'official_metadata_verified' || d.verification_status === 'manual_review_approved'; }).length;
     const reviewCount = LAW_DATABASE.filter(function(d) { return d.quality_flags && d.quality_flags.length; }).length;
 
     document.getElementById('statsArea').innerHTML =
@@ -821,7 +853,7 @@ function initStats() {
         '<div class="stat-item"><span>电信制度文件</span><span class="num">' + telecomCount + ' 份</span></div>' +
         '<div class="stat-item"><span>学习记录</span><span class="num">' + studyCount + ' 份</span></div>' +
         '<div class="stat-item"><span>总条目数</span><span class="num">' + totalArticles + '</span></div>' +
-        '<div class="stat-item"><span>官方元数据已核验</span><span class="num">' + verifiedCount + ' 份</span></div>' +
+        '<div class="stat-item"><span>已核验有效</span><span class="num">' + verifiedCount + ' 份</span></div>' +
         '<div class="stat-item"><span>待复核文件</span><span class="num">' + reviewCount + ' 份</span></div>';
 }
 
@@ -1134,11 +1166,13 @@ function escapeAttribute(text) {
 }
 
 function getStatusLabel(doc) {
+    if (doc.verification_status === 'manual_review_approved') return '人工核验有效';
     if (doc.verification_status !== 'official_metadata_verified') return '待人工核验';
     return doc.validity_status || '元数据已核验';
 }
 
 function getStatusBadgeClass(doc) {
+    if (doc.verification_status === 'manual_review_approved') return 'badge-status-ok';
     if (doc.verification_status !== 'official_metadata_verified') return 'badge-status-review';
     return doc.validity_status === '有效' ? 'badge-status-ok' : 'badge-status-old';
 }
@@ -1147,8 +1181,10 @@ function renderProvenance(doc) {
     function item(label, value) {
         return '<div class="provenance-item"><span class="provenance-label">' + label + '：</span>' + escapeHtml(value || '未录入') + '</div>';
     }
-    const source = doc.official_source_url
-        ? '<a href="' + escapeAttribute(doc.official_source_url) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(doc.official_source || '查看官方记录') + '</a>'
+    const sourceUrl = doc.manual_review_reference || doc.official_source_url;
+    const sourceLabel = doc.manual_review_reference ? '查看人工核验依据' : (doc.official_source || '查看官方记录');
+    const source = sourceUrl
+        ? '<a href="' + escapeAttribute(sourceUrl) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(sourceLabel) + '</a>'
         : '未录入';
     const flags = (doc.quality_flags || []).map(function(flag) { return qualityFlagLabel(flag); }).join('；');
     let html = '<section class="provenance-panel" aria-label="来源与版本信息"><h3>来源与版本信息</h3><div class="provenance-grid">';
@@ -1163,7 +1199,9 @@ function renderProvenance(doc) {
     html += item('核验状态', getStatusLabel(doc));
     html += item('核验日期', doc.verified_at);
     html += '</div><div class="provenance-item"><span class="provenance-label">权威来源：</span>' + source + '</div>';
-    html += '<div class="provenance-item"><span class="provenance-label">核验范围：</span>' + escapeHtml(doc.verification_scope === 'official-metadata-only' ? '官方元数据（正文仍须对照原件）' : '尚未核验') + '</div>';
+    const scope = doc.verification_scope === 'manual-source-verified' ? '人工已按留存依据核验为有效' : (doc.verification_scope === 'official-metadata-only' ? '官方元数据（正文仍须对照原件）' : '尚未核验');
+    html += '<div class="provenance-item"><span class="provenance-label">核验范围：</span>' + escapeHtml(scope) + '</div>';
+    if (doc.manual_review_note) html += '<div class="provenance-item"><span class="provenance-label">人工核验说明：</span>' + escapeHtml(doc.manual_review_note) + '</div>';
     if (flags) html += '<p class="quality-note">质量提示：' + escapeHtml(flags) + '。</p>';
     return html + '</section>';
 }
