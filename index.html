@@ -583,6 +583,7 @@
         <button class="filter-tag active" type="button" data-filter="source" data-value="all" aria-pressed="true">全部</button>
         <button class="filter-tag" type="button" data-filter="source" data-value="国家法律" aria-pressed="false">国家法律</button>
         <button class="filter-tag" type="button" data-filter="source" data-value="电信制度文件" aria-pressed="false">电信制度文件</button>
+        <button class="filter-tag" type="button" data-filter="source" data-value="学习记录" aria-pressed="false">学习记录</button>
     </div>
     <div class="filter-row" id="subCategoryRow">
         <span class="filter-label">分类：</span>
@@ -1116,7 +1117,7 @@ function viewDoc(docIndex, articleNumber, fromHistory) {
     doc.articles.forEach(function(art) {
         const anchorId = 'article-' + doc.document_id + '-' + art.number;
         html += '<article class="detail-article" id="' + escapeAttribute(anchorId) + '">';
-        html += '<div class="da-title">第' + (art.number || '') + '条</div>';
+        html += '<div class="da-title">' + (art.number === '全文' ? '全文' : '第' + (art.number || '') + '条') + '</div>';
         html += '<div class="da-content">' + nl2br(keyword ? highlightText(escapeHtml(cleanNoise(art.content)), keyword) : escapeHtml(cleanNoise(art.content))) + '</div>';
         html += '</article>';
     });
@@ -1198,6 +1199,8 @@ function renderProvenance(doc) {
     html += item('版本标识', doc.version_label);
     html += item('核验状态', getStatusLabel(doc));
     html += item('核验日期', doc.verified_at);
+    html += item('源文件目录', doc.source_folder);
+    html += item('源文件名称', doc.source_filename);
     html += '</div><div class="provenance-item"><span class="provenance-label">权威来源：</span>' + source + '</div>';
     const scope = doc.verification_scope === 'manual-source-verified' ? '人工已按留存依据核验为有效' : (doc.verification_scope === 'official-metadata-only' ? '官方元数据（正文仍须对照原件）' : '尚未核验');
     html += '<div class="provenance-item"><span class="provenance-label">核验范围：</span>' + escapeHtml(scope) + '</div>';
@@ -1215,6 +1218,7 @@ function qualityFlagLabel(flag) {
         OFFICIAL_METADATA_UNVERIFIED: '国家法律官方元数据未核验',
         SOURCE_UNVERIFIED: '来源未核验',
         SOURCE_CLASSIFICATION_MISMATCH: '本地分类与官方法规范畴不一致'
+        ,OCR_EXTRACTED_REQUIRES_MANUAL_REVIEW: '扫描件 OCR 提取，建议对照原文件复核'
     };
     return labels[flag] || flag;
 }
