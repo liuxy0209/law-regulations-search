@@ -411,7 +411,15 @@
             line-height: 1.8;
             color: var(--text);
         }
+        .da-content p { margin: 0 0 9px; }
+        .da-content p:last-child { margin-bottom: 0; }
+        .article-lead { color: var(--text); }
+        .article-item { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px; align-items: start; margin: 8px 0; padding: 8px 10px; border-radius: 7px; background: #f8fafc; }
+        .article-item.level-2 { margin-left: 22px; padding-left: 12px; background: #fbfdff; border-left: 2px solid #bfdbfe; }
+        .article-marker { color: var(--primary-dark); font-weight: 700; white-space: nowrap; }
+        .article-item-body { min-width: 0; }
         .article-chapter { margin: 18px 0 4px; color: var(--primary-dark); font-weight: 700; font-size: 16px; }
+        @media (max-width: 600px) { .article-item.level-2 { margin-left: 10px; } .article-item { padding: 7px 8px; gap: 6px; } }
         .back-btn {
             display: inline-block;
             margin-bottom: 16px;
@@ -844,6 +852,45 @@ function articleDisplayTitle(art) {
 function articleKey(art, index) {
     return art.article_id || ('number-' + String(art.number || index));
 }
+function escapeRegExp(text) {
+    return String(text || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+function renderArticleText(text, keyword) {
+    const plain = String(text || '').replace(/\r/g, '').replace(/\n[ \t　]+/g, '\n').trim();
+    const renderParagraphs = function(value) {
+        return value.split(/\n{2,}/).map(function(part) {
+            const compact = part.replace(/\n+/g, ' ').replace(/\s{2,}/g, ' ').trim();
+            if (!compact) return '';
+            const escaped = escapeHtml(compact);
+            return '<p>' + (keyword ? highlightText(escaped, keyword) : escaped) + '</p>';
+        }).join('');
+    };
+    // 仅识别原文行首的编号：不会把正文里提到的“第1条”或普通数字误拆成新项。
+    const marker = /(^|\n)\s*((?:\d+|[一二三四五六七八九十百千万]+)[、．.]|[（(]\s*(?:\d+|[一二三四五六七八九十百千万]+)\s*[）)])/gm;
+    const items = [], matches = [];
+    let match;
+    while ((match = marker.exec(plain))) matches.push({ start: match.index + match[1].length, marker: match[2].replace(/\s+/g, '') });
+    if (!matches.length) return renderParagraphs(plain);
+    const lead = plain.slice(0, matches[0].start).trim();
+    let html = lead ? '<div class="article-lead">' + renderParagraphs(lead) + '</div>' : '';
+    matches.forEach(function(item, index) {
+        const next = matches[index + 1];
+        const content = plain.slice(item.start + item.marker.length, next ? next.start : plain.length).trim();
+        if (!content) return;
+        const level = /^[（(]/.test(item.marker) ? 2 : 1;
+        items.push('<div class="article-item level-' + level + '"><span class="article-marker">' + escapeHtml(item.marker) + '</span><div class="article-item-body">' + renderParagraphs(content) + '</div></div>');
+    });
+    return html + items.join('');
+}
+function renderStructuredArticleContent(art, keyword) {
+    let text = cleanNoise(art.content || '');
+    if (art.structure_type === 'article') text = text.replace(/^\s*第\s*[一二三四五六七八九十百千万零〇0-9\s]+条\s*/, '');
+    else if ((art.structure_type === 'section' || art.structure_type === 'subsection') && art.article_title) {
+        const heading = escapeRegExp(art.article_title).replace(/\s+/g, '\\s*');
+        text = text.replace(new RegExp('^\\s*' + heading + '\\s*'), '');
+    }
+    return renderArticleText(text, keyword);
+}
 
 // ===== 数据统计（侧边栏「数据概览」） =====
 
@@ -1134,7 +1181,7 @@ function viewDoc(docIndex, articleNumber, fromHistory) {
         }
         html += '<article class="detail-article" id="' + escapeAttribute(anchorId) + '">';
         html += '<div class="da-title">' + escapeHtml(articleDisplayTitle(art)) + '</div>';
-        html += '<div class="da-content">' + nl2br(keyword ? highlightText(escapeHtml(cleanNoise(art.content)), keyword) : escapeHtml(cleanNoise(art.content))) + '</div>';
+        html += '<div class="da-content">' + renderStructuredArticleContent(art, keyword) + '</div>';
         html += '</article>';
     });
 
@@ -1300,7 +1347,7 @@ function cleanNoise(text) {
         .replace(/\n\s*\d+\s*\n/g, '\n')     // 独占一行的数字（PDF页码残留）
         .replace(/　\d+\s*　/g, '')           // 中文空格+数字+中文空格
         .replace(/  +/g, ' ')                    // 多个空格合并为一个
-        .replace(/\n/g, '')                       // 清除所有换行符
+        .replace(/\n{3,}/g, '\n\n')              // 保留段落/编号边界，供详情页排版使用
         .replace(/^\s+/, '');                     // 去除行首空白
 }
 
