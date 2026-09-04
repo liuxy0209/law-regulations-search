@@ -420,13 +420,23 @@
         .detail-secondary-action { padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; background: #fff; color: var(--primary-dark); font: inherit; font-size: 13px; cursor: pointer; }
         .detail-secondary-action:hover { border-color: var(--primary); background: #f8fbff; }
         .detail-layout { display: block; }
-        .detail-toc { max-height: 300px; overflow-y: auto; margin: 0 0 16px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: #fafcff; }
+        .detail-toc-slot { display: none; position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow-y: auto; }
+        .detail-toc-slot.is-active { display: block; }
+        .detail-toc { padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: #fafcff; }
         .detail-toc[hidden] { display: none; }
-        .detail-toc h3 { margin: 0 0 8px; font-size: 14px; color: var(--primary-dark); }
+        .detail-toc h3 { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 8px; font-size: 14px; color: var(--primary-dark); }
         .detail-toc button { display: block; width: 100%; padding: 6px 4px; border: 0; background: transparent; color: var(--text-secondary); text-align: left; font: inherit; font-size: 13px; line-height: 1.45; cursor: pointer; }
         .detail-toc button:hover, .detail-toc button:focus-visible { color: var(--primary); text-decoration: underline; }
+        .toc-collapse, .toc-reopen { width: auto !important; padding: 4px 6px !important; border: 1px solid var(--border) !important; border-radius: 5px !important; background: #fff !important; color: var(--primary-dark) !important; font-size: 12px !important; white-space: nowrap; }
+        .toc-group { border-top: 1px solid #e5edf8; }
+        .toc-group:first-of-type { border-top: 0; }
+        .toc-parent { display: flex !important; align-items: center; gap: 6px; color: var(--text) !important; font-weight: 700 !important; }
+        .toc-arrow { display: inline-block; width: 14px; color: var(--primary); transition: transform .18s ease; }
+        .toc-parent[aria-expanded="true"] .toc-arrow { transform: rotate(90deg); }
+        .toc-children { margin: 0 0 4px 16px; padding-left: 8px; border-left: 2px solid #dbeafe; }
+        .toc-children button { font-size: 12px; }
         .detail-body { min-width: 0; }
-        .mobile-toc-toggle { display: inline-block; padding: 8px 12px; border: 1px solid var(--primary); border-radius: 6px; background: #eff6ff; color: var(--primary-dark); font: inherit; font-size: 13px; cursor: pointer; }
+        .mobile-toc-toggle { display: none; }
         .article-tools { float: right; display: flex; gap: 8px; }
         .article-copy { border: 0; background: transparent; color: var(--primary); font: inherit; font-size: 12px; cursor: pointer; }
         .article-copy:hover { text-decoration: underline; }
@@ -548,9 +558,8 @@
             .topic-section { padding: 0 14px; }
             .topic-label { width: 100%; }
             .detail-panel { padding: 16px; }
-            .detail-toc { position: static; max-height: 46vh; margin: 0 0 14px; }
+            .detail-toc-slot { display: none !important; }
             .detail-toc[hidden] { display: none; }
-            .mobile-toc-toggle { margin: 0 0 10px; }
             .detail-actions { gap: 6px; }
             .detail-actions button { flex: 1 1 auto; }
             .result-article { padding: 12px; }
@@ -699,6 +708,7 @@
             <h2>我的常用 <span>仅保存在本机</span></h2>
             <div id="personalListArea"></div>
         </div>
+        <div class="detail-toc-slot" id="detailTocSidebar" aria-live="polite"></div>
     </div>
 
     <!-- ========== 搜索结果区（初始显示欢迎页，搜索后显示结果卡片） ========== -->
@@ -821,6 +831,13 @@ function bindEvents() {
         const button = e.target.closest('button[data-doc-index]');
         if (button) viewDoc(Number(button.dataset.docIndex));
     });
+    document.getElementById('detailTocSidebar').addEventListener('click', function(e) {
+        const button = e.target.closest('button[data-action]');
+        if (!button) return;
+        if (button.dataset.action === 'toc-jump') scrollToDetailAnchor(button.dataset.anchor);
+        if (button.dataset.action === 'toggle-toc') toggleMobileToc();
+        if (button.dataset.action === 'toggle-toc-group') toggleTocGroup(button);
+    });
     document.querySelector('.topic-section').addEventListener('click', function(e) {
         const button = e.target.closest('button[data-topic-keyword]');
         if (!button) return;
@@ -844,6 +861,7 @@ function bindEvents() {
         if (action === 'toggle-matches') toggleDocumentMatches(button.dataset.docId);
         if (action === 'toc-jump') scrollToDetailAnchor(button.dataset.anchor);
         if (action === 'toggle-toc') toggleMobileToc();
+        if (action === 'toggle-toc-group') toggleTocGroup(button);
         if (action === 'copy-document-citation') copyDocumentCitation(Number(button.dataset.docIndex));
         if (action === 'copy-article-citation') copyArticleCitation(Number(button.dataset.docIndex), button.dataset.article);
         if (action === 'toggle-favorite') toggleFavorite(Number(button.dataset.docIndex));
@@ -1488,21 +1506,43 @@ function goPage(page) {
 }
 
 function buildDocumentToc(doc) {
-    const entries = [];
+    const chapterAnchors = new Map();
     let shownChapter = null;
     let chapterIndex = 0;
     doc.articles.forEach(function(art, index) {
         if (art.chapter && art.chapter !== shownChapter) {
             shownChapter = art.chapter;
-            entries.push({ label: art.chapter, anchor: 'section-' + doc.document_id + '-' + chapterIndex });
+            chapterAnchors.set(art.chapter, 'section-' + doc.document_id + '-' + chapterIndex);
             chapterIndex += 1;
         }
-        if (!shownChapter) entries.push({ label: articleDisplayTitle(art), anchor: 'article-' + doc.document_id + '-' + articleKey(art, index) });
     });
-    if (!entries.length) return '';
-    let html = '<nav class="detail-toc" id="detailToc" aria-label="本文件目录"><h3>本文件目录</h3>';
-    entries.forEach(function(entry) { html += '<button type="button" data-action="toc-jump" data-anchor="' + escapeAttribute(entry.anchor) + '">' + escapeHtml(entry.label) + '</button>'; });
-    return html + '</nav>';
+    const groups = new Map();
+    chapterAnchors.forEach(function(anchor, chapter) {
+        const levels = String(chapter).split(/\s*·\s*/).map(function(part) { return part.trim(); }).filter(Boolean);
+        if (!levels.length) return;
+        const parent = levels[0];
+        const child = levels.length > 1 ? levels[1] : null;
+        if (!groups.has(parent)) groups.set(parent, { label: parent, anchor: anchor, children: new Map() });
+        if (child && !groups.get(parent).children.has(child)) groups.get(parent).children.set(child, anchor);
+    });
+    if (!groups.size) return '';
+    let html = '<nav class="detail-toc" id="detailToc" aria-label="本文件目录"><h3><span>本文目录</span><button type="button" class="toc-collapse" data-action="toggle-toc">收起</button></h3>';
+    let groupIndex = 0;
+    groups.forEach(function(group) {
+        // 只把“编”或中文一级标题展开到章；已经是“章”的结构不再展开到节或具体条款。
+        const canExpandToChapter = /^第[一二三四五六七八九十百千万零〇]+编/.test(group.label) || /^[一二三四五六七八九十百千万零〇]+、/.test(group.label);
+        if (!group.children.size || !canExpandToChapter) {
+            html += '<button type="button" data-action="toc-jump" data-anchor="' + escapeAttribute(group.anchor) + '">' + escapeHtml(group.label) + '</button>';
+            return;
+        }
+        const childId = 'toc-group-' + doc.document_id + '-' + groupIndex;
+        html += '<div class="toc-group"><button type="button" class="toc-parent" data-action="toggle-toc-group" aria-expanded="false" aria-controls="' + escapeAttribute(childId) + '"><span class="toc-arrow">›</span>' + escapeHtml(group.label) + '</button>';
+        html += '<div class="toc-children" id="' + escapeAttribute(childId) + '" hidden>';
+        group.children.forEach(function(anchor, label) { html += '<button type="button" data-action="toc-jump" data-anchor="' + escapeAttribute(anchor) + '">' + escapeHtml(label) + '</button>'; });
+        html += '</div></div>';
+        groupIndex += 1;
+    });
+    return html + '</nav><button type="button" class="toc-reopen" id="tocReopen" data-action="toggle-toc" hidden>显示目录</button>';
 }
 function scrollToDetailAnchor(anchor) {
     const target = document.getElementById(anchor);
@@ -1519,11 +1559,14 @@ function toggleMobileToc() {
     const toc = document.getElementById('detailToc');
     if (!toc) return;
     toc.hidden = !toc.hidden;
-    const button = document.querySelector('[data-action="toggle-toc"]');
-    if (button) {
-        button.setAttribute('aria-expanded', String(!toc.hidden));
-        button.textContent = toc.hidden ? '目录定位（展开）' : '目录定位（收起）';
-    }
+    const reopen = document.getElementById('tocReopen');
+    if (reopen) reopen.hidden = !toc.hidden;
+}
+function toggleTocGroup(button) {
+    const child = document.getElementById(button.getAttribute('aria-controls'));
+    if (!child) return;
+    child.hidden = !child.hidden;
+    button.setAttribute('aria-expanded', String(!child.hidden));
 }
 function citationUrl(doc, articleId) {
     const url = new URL(window.location.href);
@@ -1596,8 +1639,7 @@ function viewDoc(docIndex, articleNumber, fromHistory) {
     html += '<button type="button" class="detail-secondary-action" data-action="copy-document-citation" data-doc-index="' + docIndex + '">复制文件引用</button>';
     html += '<button type="button" class="detail-secondary-action" data-action="toggle-favorite" data-doc-index="' + docIndex + '">' + (isFavorite(doc.document_id) ? '取消收藏' : '收藏本文件') + '</button>';
     html += '</div>';
-    html += '<button type="button" class="mobile-toc-toggle" data-action="toggle-toc" aria-expanded="false" aria-controls="detailToc">目录定位（展开）</button>';
-    html += '<div class="detail-layout">' + buildDocumentToc(doc) + '<div class="detail-body">';
+    html += '<div class="detail-layout"><div class="detail-body">';
     html += renderProvenance(doc);
 
     let shownChapter = null;
@@ -1616,12 +1658,14 @@ function viewDoc(docIndex, articleNumber, fromHistory) {
         html += '</article>';
     });
 
-    html += '</div></div></div>';
+    html += '</div></div>';
     area.innerHTML = html;
+    const tocSlot = document.getElementById('detailTocSidebar');
+    const tocHtml = buildDocumentToc(doc);
+    tocSlot.innerHTML = tocHtml;
+    tocSlot.classList.toggle('is-active', Boolean(tocHtml));
     recordRecentDocument(doc.document_id);
     initPersonalList();
-    const toc = document.getElementById('detailToc');
-    if (toc) toc.hidden = true;
     writeUrl(Boolean(fromHistory));
     document.getElementById('statusLine').textContent = '已打开“' + doc.title + '”。';
     requestAnimationFrame(function() {
@@ -1645,6 +1689,8 @@ function viewDoc(docIndex, articleNumber, fromHistory) {
 function returnToResults() {
     viewingDoc = null;
     viewingArticle = null;
+    const tocSlot = document.getElementById('detailTocSidebar');
+    if (tocSlot) { tocSlot.replaceChildren(); tocSlot.classList.remove('is-active'); }
     doSearch({ resetPage: false });
     scrollToTop();
 }
