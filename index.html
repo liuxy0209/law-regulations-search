@@ -694,6 +694,30 @@ let visibleDocCount = SIDEBAR_PAGE_SIZE;
 let viewingDoc = null;
 let viewingArticle = null;
 let searchScopeDocId = null;
+const DEFAULT_DOCUMENT_ORDER = [
+    '中华人民共和国宪法',
+    '中华人民共和国民法典',
+    '最高人民法院关于适用《中华人民共和国民法典》合同编通则若干问题的解释',
+    '中华人民共和国招标投标法',
+    '中华人民共和国招标投标法实施条例',
+    '中华人民共和国刑法',
+    '中华人民共和国政府采购法',
+    '中华人民共和国政府采购法实施条例',
+    '中华人民共和国公司法',
+    '中华人民共和国反垄断法',
+    '中华人民共和国反不正当竞争法',
+    '中华人民共和国价格法',
+    '中华人民共和国电子商务法',
+    '中华人民共和国网络安全法',
+    '中华人民共和国数据安全法',
+    '中华人民共和国个人信息保护法'
+];
+const TELECOM_DOCUMENT_ORDER = [
+    '《中国电信集团〔2024〕320号-中国电信集团采购管理办法》',
+    '《中国电信集团〔2024〕319号-中国电信集团供应商管理办法》',
+    '《中国电信集团〔2012〕983号-中国电信集团采购物资质量管理办法（试行）》',
+    '《中国电信集团〔2026〕208号-中国电信集团采购招标投标管理办法》'
+];
 var _ck=[0,76,0,105,0,117,0,88,0,89,101,116,116,6];
 const ADMIN_API_BASE = 'https://liuxy-law-admin.liuxy0209.workers.dev/api';
 
@@ -958,6 +982,53 @@ function sourceBadgeClass(doc) {
     if (doc.source === '最高人民法院司法解释') return 'badge-judicial';
     return doc.source === '学习记录' ? 'badge-study' : 'badge-telecom';
 }
+function chineseNumberValue(text) {
+    const digits = { '零': 0, '〇': 0, '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9 };
+    const units = { '十': 10, '百': 100, '千': 1000, '万': 10000 };
+    let total = 0; let current = 0;
+    String(text || '').split('').forEach(function(char) {
+        if (Object.prototype.hasOwnProperty.call(digits, char)) current = digits[char];
+        else if (units[char]) { total += (current || 1) * units[char]; current = 0; }
+    });
+    return total + current;
+}
+function documentStructureSummary(doc) {
+    const articlePattern = /^第([一二三四五六七八九十百千万零〇]+条)(之[一二三四五六七八九十百千万零〇]+)?$/;
+    const provisions = (doc.articles || []).filter(function(art) { return articlePattern.test(art.article_title || art.number || ''); });
+    if (!provisions.length) return (doc.articles || []).length + ' 个可检索条目';
+    const extraEntries = doc.articles.length - provisions.length;
+    const bases = new Map();
+    provisions.forEach(function(art) {
+        const match = String(art.article_title || art.number || '').match(articlePattern);
+        if (match && !bases.has(match[1])) bases.set(match[1], chineseNumberValue(match[1].replace('条', '')));
+    });
+    const addedArticles = provisions.length - bases.size;
+    let summary = provisions.length + ' 条文';
+    if (addedArticles > 0) {
+        const lastBase = Array.from(bases.entries()).sort(function(a, b) { return b[1] - a[1]; })[0];
+        summary += '（编号至第' + lastBase[0] + '，含 ' + addedArticles + ' 个“条之…”加条）';
+    }
+    if (extraEntries > 0) summary += '，另含 ' + extraEntries + ' 项题注/结构说明';
+    return summary;
+}
+function documentDefaultRank(doc) {
+    const legalIndex = DEFAULT_DOCUMENT_ORDER.indexOf(doc.title);
+    if (legalIndex >= 0) return legalIndex * 10;
+    const telecomIndex = TELECOM_DOCUMENT_ORDER.indexOf(doc.title);
+    if (telecomIndex >= 0) return 1000 + telecomIndex * 10;
+    if (doc.source === '国家法律' || doc.source === '国家行政法规' || doc.source === '最高人民法院司法解释') {
+        const categoryRank = { '采购与市场交易': 200, '合同与市场主体': 220, '财税、国资与审计': 240, '数据、网络与保密': 260, '质量、安全与生态': 280, '劳动用工': 300, '知识产权': 320, '基础法律': 340, '合同与民事司法解释': 360 };
+        return categoryRank[doc.sub_category] || 380;
+    }
+    if (doc.source === '电信制度文件') {
+        const categoryRank = { '供应商管理': 1100, '质量管理室': 1200, '采购管理室': 1300, '物流管理室': 1400, '合同合规': 1500, '内控管理': 1600, '业务外包管理': 1700 };
+        return categoryRank[doc.sub_category] || 1800;
+    }
+    return doc.source === '学习记录' ? 2000 : 1900;
+}
+function compareDocuments(left, right) {
+    return documentDefaultRank(left) - documentDefaultRank(right) || left.title.localeCompare(right.title, 'zh-CN');
+}
 function articleDisplayTitle(art) {
     if (art.article_title) return art.article_title;
     return art.number === '全文' ? '全文' : '第' + (art.number || '') + '条';
@@ -1063,11 +1134,12 @@ function initDocList() {
     const area = document.getElementById('docListArea');
     area.replaceChildren();
     const fragment = document.createDocumentFragment();
-    LAW_DATABASE.slice(0, visibleDocCount).forEach(function(doc, idx) {
+    LAW_DATABASE.map(function(doc, index) { return { doc: doc, index: index }; }).sort(function(a, b) { return compareDocuments(a.doc, b.doc); }).slice(0, visibleDocCount).forEach(function(itemData) {
+        const doc = itemData.doc;
         const item = document.createElement('button');
         item.type = 'button';
         item.className = 'doc-list-item';
-        item.dataset.docIndex = String(idx);
+        item.dataset.docIndex = String(itemData.index);
         item.textContent = doc.title;
         item.title = doc.title;
         fragment.appendChild(item);
@@ -1112,8 +1184,8 @@ function doSearch(options) {
 
     if (!keyword) {
         // No keyword: show filtered doc list
-        searchResults = filtered.map(function(doc) { return { doc: doc, docIndex: LAW_DATABASE.indexOf(doc), matchedArticles: [], score: doc.validity_status === '有效' ? 1 : 0 }; })
-            .sort(function(a, b) { return b.score - a.score || a.doc.title.localeCompare(b.doc.title, 'zh-CN'); });
+        searchResults = filtered.map(function(doc) { return { doc: doc, docIndex: LAW_DATABASE.indexOf(doc), matchedArticles: [], score: 0 }; })
+            .sort(function(a, b) { return compareDocuments(a.doc, b.doc); });
         renderResults(keyword);
         return;
     }
@@ -1159,7 +1231,7 @@ function doSearch(options) {
             });
         }
     });
-    searchResults.sort(function(a, b) { return b.score - a.score || a.doc.title.localeCompare(b.doc.title, 'zh-CN'); });
+    searchResults.sort(function(a, b) { return b.score - a.score || compareDocuments(a.doc, b.doc); });
     renderResults(keyword);
 }
 
@@ -1214,7 +1286,7 @@ function renderResults(keyword) {
         html += '<span class="result-badge ' + getStatusBadgeClass(doc) + '">' + getStatusLabel(doc) + '</span>';
         html += '</div>';
         html += '<div class="result-card-details">';
-        html += '<div class="result-meta">' + escapeHtml(doc.sub_category || '') + (doc.year ? ' | ' + escapeHtml(doc.year) + '年' : '') + ' | ' + doc.articles.length + ' 个条目 | ' + escapeHtml(doc.validity_status || '待核验') + '</div>';
+        html += '<div class="result-meta">' + escapeHtml(doc.sub_category || '') + (doc.year ? ' | ' + escapeHtml(doc.year) + '年' : '') + ' | ' + escapeHtml(documentStructureSummary(doc)) + ' | ' + escapeHtml(doc.validity_status || '待核验') + '</div>';
         html += '</div>';
         html += '</div>';
 
@@ -1290,7 +1362,7 @@ function viewDoc(docIndex, articleNumber, fromHistory) {
     html += '<div class="detail-meta">';
     html += '<span class="result-badge ' + badgeClass + '">' + doc.source + '</span> ';
     html += '<span class="result-badge ' + getStatusBadgeClass(doc) + '">' + getStatusLabel(doc) + '</span> ';
-    html += escapeHtml(doc.sub_category || '') + (doc.year ? ' | ' + escapeHtml(doc.year) + '年' : '') + ' | ' + doc.articles.length + ' 个条目';
+    html += escapeHtml(doc.sub_category || '') + (doc.year ? ' | ' + escapeHtml(doc.year) + '年' : '') + ' | ' + escapeHtml(documentStructureSummary(doc));
     html += '</div>';
     html += '<button type="button" class="detail-search-action" data-action="search-current-doc">在本文件内检索</button>';
     html += renderProvenance(doc);

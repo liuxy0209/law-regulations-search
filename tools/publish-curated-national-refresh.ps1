@@ -17,6 +17,7 @@ $files = @(
     'tools/refresh-curated-national-laws.py',
     'tools/tidy-official-preambles.py',
     'tools/add-contract-interpretation.ps1',
+    'tools/repair-article-suffixes.js',
     'tools/publish-curated-national-refresh.ps1'
 )
 
@@ -40,7 +41,7 @@ $items = foreach ($file in $files) {
 }
 $tree = Invoke-GitHubJson 'POST' "repos/$Repository/git/trees" @{ base_tree = $parentCommit.tree.sha; tree = @($items) }
 $commit = Invoke-GitHubJson 'POST' "repos/$Repository/git/commits" @{
-    message = 'feat: improve scoped search and add contract interpretation'
+    message = 'fix: clarify provision counts and prioritize default browsing'
     tree = $tree.sha
     parents = @($parentSha)
 }
