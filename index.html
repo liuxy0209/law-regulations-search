@@ -162,6 +162,13 @@
             transition: background 0.2s;
         }
         .search-btn:hover { background: var(--primary-dark); }
+        .scope-picker { display: flex; align-items: center; gap: 8px; margin: 10px 4px 0; color: var(--text-secondary); font-size: 13px; }
+        .scope-picker label { font-weight: 600; color: var(--text); white-space: nowrap; }
+        .scope-picker input { width: min(100%, 520px); padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); font: inherit; }
+        .scope-picker input:focus-visible { border-color: var(--primary); }
+        .scope-clear { border: 0; padding: 4px 7px; color: var(--primary-dark); background: transparent; cursor: pointer; font: inherit; }
+        .scope-clear[hidden] { display: none; }
+        .scope-hint { font-size: 12px; color: var(--text-secondary); }
 
         /* ===================== 筛选标签栏 ===================== */
         .filter-section {
@@ -323,6 +330,7 @@
             white-space: nowrap;
         }
         .badge-law { background: #dbeafe; color: #1d4ed8; }
+        .badge-judicial { background: #f3e8ff; color: #7e22ce; }
         .badge-telecom { background: #dcfce7; color: #166534; }
         .badge-study { background: #fef3c7; color: #92400e; }
         .badge-status-ok { background: var(--accent-light); color: #047857; }
@@ -399,6 +407,11 @@
             border-bottom: 1px dashed var(--border);
         }
         .detail-article { scroll-margin-top: 20px; content-visibility: auto; contain-intrinsic-size: auto 130px; }
+        /* 从结果页定位时必须先取得真实布局高度，避免长文的屏外预估高度造成跳转偏移。 */
+        .detail-panel.is-locating .detail-article { content-visibility: visible; contain-intrinsic-size: auto; }
+        .detail-article.is-targeted { background: #fff9df; box-shadow: 0 0 0 4px #fff9df; border-radius: 4px; }
+        .detail-search-action { margin: 14px 0 4px; padding: 8px 12px; border: 1px solid var(--primary); border-radius: 6px; background: #eff6ff; color: var(--primary-dark); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+        .detail-search-action:hover { background: #dbeafe; }
         .detail-article:last-child { border-bottom: none; }
         .detail-article .da-title {
             font-weight: 700;
@@ -566,7 +579,7 @@
 <div class="header">
     <div class="header-inner">
         <h1>法律法规与制度检索系统</h1>
-        <p>涵盖国家法律、行政法规与中国电信规章制度，支持关键字与多维度筛选检索</p>
+        <p>涵盖国家法律、行政法规、最高法司法解释与中国电信规章制度，支持关键字与多维度筛选检索</p>
     </div>
 </div>
 
@@ -585,6 +598,13 @@
         </div>
         <button class="search-btn" id="searchBtn" type="button">搜索</button>
     </div>
+    <div class="scope-picker">
+        <label for="scopeDocInput">检索范围</label>
+        <input id="scopeDocInput" list="scopeDocOptions" type="search" placeholder="全部文件；输入并从提示中选择指定法律或制度" autocomplete="off" aria-describedby="scopeHint">
+        <datalist id="scopeDocOptions"></datalist>
+        <button class="scope-clear" id="scopeClear" type="button" hidden>清除范围</button>
+        <span class="scope-hint" id="scopeHint">留空即检索全部文件</span>
+    </div>
     <p class="status-line" id="statusLine" aria-live="polite"></p>
 </div>
 
@@ -595,6 +615,7 @@
         <button class="filter-tag active" type="button" data-filter="source" data-value="all" aria-pressed="true">全部</button>
         <button class="filter-tag" type="button" data-filter="source" data-value="国家法律" aria-pressed="false">国家法律</button>
         <button class="filter-tag" type="button" data-filter="source" data-value="国家行政法规" aria-pressed="false">国家行政法规</button>
+        <button class="filter-tag" type="button" data-filter="source" data-value="最高人民法院司法解释" aria-pressed="false">最高法司法解释</button>
         <button class="filter-tag" type="button" data-filter="source" data-value="电信制度文件" aria-pressed="false">电信制度文件</button>
         <button class="filter-tag" type="button" data-filter="source" data-value="学习记录" aria-pressed="false">学习记录</button>
     </div>
@@ -672,11 +693,13 @@ const SIDEBAR_PAGE_SIZE = 50;
 let visibleDocCount = SIDEBAR_PAGE_SIZE;
 let viewingDoc = null;
 let viewingArticle = null;
+let searchScopeDocId = null;
 var _ck=[0,76,0,105,0,117,0,88,0,89,101,116,116,6];
 const ADMIN_API_BASE = 'https://liuxy-law-admin.liuxy0209.workers.dev/api';
 
 document.addEventListener('DOMContentLoaded', function() {
     initFilters();
+    initScopePicker();
     initStats();
     initDocList();
     bindEvents();
@@ -691,9 +714,19 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function bindEvents() {
-    document.getElementById('searchBtn').addEventListener('click', function() { doSearch({ resetPage: true }); });
+    document.getElementById('searchBtn').addEventListener('click', function() { startSearch(); });
     document.getElementById('searchInput').addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') doSearch({ resetPage: true });
+        if (e.key === 'Enter') startSearch();
+    });
+    document.getElementById('scopeDocInput').addEventListener('change', function() { syncScopeFromInput(false); });
+    document.getElementById('scopeDocInput').addEventListener('input', function(e) {
+        if (!e.target.value.trim()) { searchScopeDocId = null; updateScopePicker(); }
+    });
+    document.getElementById('scopeClear').addEventListener('click', function() {
+        searchScopeDocId = null;
+        document.getElementById('scopeDocInput').value = '';
+        updateScopePicker();
+        doSearch({ resetPage: true });
     });
     document.querySelector('.filter-section').addEventListener('click', function(e) {
         const button = e.target.closest('button[data-filter]');
@@ -712,6 +745,7 @@ function bindEvents() {
         if (action === 'jump-article') viewDoc(Number(button.dataset.docIndex), button.dataset.article);
         if (action === 'page') goPage(Number(button.dataset.page));
         if (action === 'back') returnToResults();
+        if (action === 'search-current-doc') searchWithinCurrentDoc();
     });
     window.addEventListener('popstate', restoreUrlState);
     const feedbackDialog = document.getElementById('feedbackDialog');
@@ -794,6 +828,72 @@ function initFilters() {
     document.getElementById('yearRow').appendChild(yearFragment);
 }
 
+function initScopePicker() {
+    const list = document.getElementById('scopeDocOptions');
+    const fragment = document.createDocumentFragment();
+    LAW_DATABASE.slice().sort(function(a, b) { return a.title.localeCompare(b.title, 'zh-CN'); }).forEach(function(doc) {
+        const option = document.createElement('option');
+        option.value = doc.title;
+        option.label = doc.source + '｜' + doc.title;
+        fragment.appendChild(option);
+    });
+    list.appendChild(fragment);
+    updateScopePicker();
+}
+
+function getScopedDocument() {
+    return searchScopeDocId ? LAW_DATABASE.find(function(doc) { return doc.document_id === searchScopeDocId; }) || null : null;
+}
+
+function updateScopePicker() {
+    const input = document.getElementById('scopeDocInput');
+    const hint = document.getElementById('scopeHint');
+    const clear = document.getElementById('scopeClear');
+    const doc = getScopedDocument();
+    if (doc) {
+        input.value = doc.title;
+        hint.textContent = '当前仅检索：' + doc.title;
+        clear.hidden = false;
+    } else {
+        hint.textContent = '留空即检索全部文件';
+        clear.hidden = true;
+    }
+}
+
+function syncScopeFromInput(reportInvalid) {
+    const input = document.getElementById('scopeDocInput');
+    const value = input.value.trim();
+    if (!value) {
+        searchScopeDocId = null;
+        updateScopePicker();
+        return true;
+    }
+    const doc = LAW_DATABASE.find(function(item) { return item.title === value; });
+    if (!doc) {
+        if (reportInvalid) {
+            document.getElementById('statusLine').textContent = '请从“检索范围”的提示列表中选择一份法律或制度，或清空后检索全部文件。';
+            input.focus();
+        }
+        return false;
+    }
+    searchScopeDocId = doc.document_id;
+    updateScopePicker();
+    return true;
+}
+
+function startSearch() {
+    if (!syncScopeFromInput(true)) return;
+    doSearch({ resetPage: true });
+}
+
+function searchWithinCurrentDoc() {
+    if (viewingDoc === null || !LAW_DATABASE[viewingDoc]) return;
+    searchScopeDocId = LAW_DATABASE[viewingDoc].document_id;
+    updateScopePicker();
+    returnToResults();
+    document.getElementById('searchInput').focus();
+}
+
 function toggleFilter(el) {
     const filterKey = el.dataset.filter;
     currentFilters[filterKey] = el.dataset.value;
@@ -822,6 +922,9 @@ function restoreUrlState() {
         if (value && exists) currentFilters[key] = value;
     });
     document.getElementById('searchInput').value = params.get('q') || '';
+    const scopeId = params.get('scope');
+    if (scopeId && LAW_DATABASE.some(function(doc) { return doc.document_id === scopeId; })) searchScopeDocId = scopeId;
+    updateScopePicker();
     currentPage = Math.max(1, Number(params.get('page')) || 1);
     updateFilterButtons();
     doSearch({ resetPage: false, replace: true });
@@ -837,6 +940,7 @@ function writeUrl(replace) {
     const keyword = document.getElementById('searchInput').value.trim();
     if (keyword) params.set('q', keyword);
     Object.keys(currentFilters).forEach(function(key) { if (currentFilters[key] !== 'all') params.set(key, currentFilters[key]); });
+    if (searchScopeDocId) params.set('scope', searchScopeDocId);
     if (currentPage > 1) params.set('page', String(currentPage));
     let hash = '';
     if (viewingDoc !== null) {
@@ -849,6 +953,11 @@ function writeUrl(replace) {
 }
 
 // 条目标题、锚点均以原制度的结构为准：条文、章节、通知前言及未编号全文不再一律伪装成“第X条”。
+function sourceBadgeClass(doc) {
+    if (doc.source === '国家法律' || doc.source === '国家行政法规') return 'badge-law';
+    if (doc.source === '最高人民法院司法解释') return 'badge-judicial';
+    return doc.source === '学习记录' ? 'badge-study' : 'badge-telecom';
+}
 function articleDisplayTitle(art) {
     if (art.article_title) return art.article_title;
     return art.number === '全文' ? '全文' : '第' + (art.number || '') + '条';
@@ -908,6 +1017,7 @@ function renderStructuredArticleContent(art, keyword) {
  */
 function initStats() {
     const lawCount = LAW_DATABASE.filter(function(d) { return d.source === '国家法律' || d.source === '国家行政法规'; }).length;
+    const judicialCount = LAW_DATABASE.filter(function(d) { return d.source === '最高人民法院司法解释'; }).length;
     const telecomCount = LAW_DATABASE.filter(function(d) { return d.source === '电信制度文件'; }).length;
     const studyCount = LAW_DATABASE.filter(function(d) { return d.source === '学习记录'; }).length;
     const totalArticles = LAW_DATABASE.reduce(function(sum, d) { return sum + d.articles.length; }, 0);
@@ -916,6 +1026,7 @@ function initStats() {
 
     document.getElementById('statsArea').innerHTML =
         '<div class="stat-item"><span>国家法规</span><span class="num">' + lawCount + ' 部</span></div>' +
+        '<div class="stat-item"><span>最高法司法解释</span><span class="num">' + judicialCount + ' 部</span></div>' +
         '<div class="stat-item"><span>电信制度文件</span><span class="num">' + telecomCount + ' 份</span></div>' +
         '<div class="stat-item"><span>学习记录</span><span class="num">' + studyCount + ' 份</span></div>' +
         '<div class="stat-item"><span>总条目数</span><span class="num">' + totalArticles + '</span></div>' +
@@ -930,11 +1041,13 @@ function initWelcome() {
     const totalDocs = LAW_DATABASE.length;
     const totalArticles = LAW_DATABASE.reduce(function(sum, d) { return sum + d.articles.length; }, 0);
     const lawCount = LAW_DATABASE.filter(function(d) { return d.source === '国家法律' || d.source === '国家行政法规'; }).length;
+    const judicialCount = LAW_DATABASE.filter(function(d) { return d.source === '最高人民法院司法解释'; }).length;
     const telecomCount = LAW_DATABASE.filter(function(d) { return d.source === '电信制度文件'; }).length;
 
     document.getElementById('welcomeStats').innerHTML =
         '<div class="stat-box"><div class="big-num">' + totalDocs + '</div><div class="label">文件总数</div></div>' +
         '<div class="stat-box"><div class="big-num">' + lawCount + '</div><div class="label">国家法规</div></div>' +
+        '<div class="stat-box"><div class="big-num">' + judicialCount + '</div><div class="label">最高法司法解释</div></div>' +
         '<div class="stat-box"><div class="big-num">' + telecomCount + '</div><div class="label">电信制度</div></div>' +
         '<div class="stat-box"><div class="big-num">' + totalArticles + '</div><div class="label">可检索条目</div></div>';
     _uiOpt();
@@ -988,6 +1101,7 @@ function doSearch(options) {
 
     // Filter docs
     let filtered = LAW_DATABASE.filter(function(doc) {
+        if (searchScopeDocId && doc.document_id !== searchScopeDocId) return false;
         if (currentFilters.source !== 'all' && doc.source !== currentFilters.source) return false;
         if (currentFilters.category !== 'all' && doc.sub_category !== currentFilters.category) return false;
         if (currentFilters.year !== 'all' && doc.year !== currentFilters.year) return false;
@@ -1075,7 +1189,8 @@ function renderResults(keyword) {
     let html = '';
     html += '<div class="results-header">';
     html += '<h2>' + (keyword ? '搜索结果' : '文件列表') + '</h2>';
-    html += '<span class="results-count">共 ' + searchResults.length + ' 个文件</span>';
+    const scopeDoc = getScopedDocument();
+    html += '<span class="results-count">' + (scopeDoc ? '范围：' + escapeHtml(scopeDoc.title) + '｜' : '') + '共 ' + searchResults.length + ' 个文件</span>';
     html += '</div>';
 
     // Pagination
@@ -1087,7 +1202,7 @@ function renderResults(keyword) {
     pageItems.forEach(function(item, i) {
         const doc = item.doc;
         const globalIdx = item.docIndex;
-        const badgeClass = (doc.source === '国家法律' || doc.source === '国家行政法规') ? 'badge-law' : (doc.source === '学习记录' ? 'badge-study' : 'badge-telecom');
+        const badgeClass = sourceBadgeClass(doc);
 
         html += '<div class="result-card">';
 
@@ -1164,19 +1279,20 @@ function viewDoc(docIndex, articleNumber, fromHistory) {
 
     const area = document.getElementById('resultsArea');
     const keyword = document.getElementById('searchInput').value.trim();
-    const badgeClass = (doc.source === '国家法律' || doc.source === '国家行政法规') ? 'badge-law' : (doc.source === '学习记录' ? 'badge-study' : 'badge-telecom');
+    const badgeClass = sourceBadgeClass(doc);
 
     let html = '';
     viewingDoc = docIndex;
     viewingArticle = articleNumber || null;
     html += '<button type="button" class="back-btn" data-action="back">&laquo; 返回列表</button>';
-    html += '<div class="detail-panel">';
+    html += '<div class="detail-panel' + (articleNumber ? ' is-locating' : '') + '">';
     html += '<h2>' + escapeHtml(doc.title) + '</h2>';
     html += '<div class="detail-meta">';
     html += '<span class="result-badge ' + badgeClass + '">' + doc.source + '</span> ';
     html += '<span class="result-badge ' + getStatusBadgeClass(doc) + '">' + getStatusLabel(doc) + '</span> ';
     html += escapeHtml(doc.sub_category || '') + (doc.year ? ' | ' + escapeHtml(doc.year) + '年' : '') + ' | ' + doc.articles.length + ' 个条目';
     html += '</div>';
+    html += '<button type="button" class="detail-search-action" data-action="search-current-doc">在本文件内检索</button>';
     html += renderProvenance(doc);
 
     let shownChapter = null;
@@ -1198,14 +1314,20 @@ function viewDoc(docIndex, articleNumber, fromHistory) {
     writeUrl(Boolean(fromHistory));
     document.getElementById('statusLine').textContent = '已打开“' + doc.title + '”。';
     requestAnimationFrame(function() {
+        // 定位时让浏览器先完成两帧真实排版；否则 content-visibility 的预估高度会在长文中把位置推到后面的条款。
+        requestAnimationFrame(function() {
         let target = articleNumber ? document.getElementById('article-' + doc.document_id + '-' + articleNumber) : null;
         // 兼容旧版按“条号”分享的链接；新版使用唯一的 article_id，避免附件或手册重复条号造成跳转错误。
         if (!target && articleNumber) {
             const legacyIndex = doc.articles.findIndex(function(art) { return String(art.number) === String(articleNumber); });
             if (legacyIndex >= 0) target = document.getElementById('article-' + doc.document_id + '-' + articleKey(doc.articles[legacyIndex], legacyIndex));
         }
-        if (target) target.scrollIntoView({ block: 'start', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+        if (target) {
+            target.scrollIntoView({ block: 'start', behavior: 'auto' });
+            target.classList.add('is-targeted');
+        }
         else scrollToTop();
+        });
     });
 }
 

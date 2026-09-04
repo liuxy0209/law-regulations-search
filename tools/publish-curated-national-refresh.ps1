@@ -16,6 +16,7 @@ $files = @(
     'national-law-official-refresh.json',
     'tools/refresh-curated-national-laws.py',
     'tools/tidy-official-preambles.py',
+    'tools/add-contract-interpretation.ps1',
     'tools/publish-curated-national-refresh.ps1'
 )
 
@@ -39,7 +40,7 @@ $items = foreach ($file in $files) {
 }
 $tree = Invoke-GitHubJson 'POST' "repos/$Repository/git/trees" @{ base_tree = $parentCommit.tree.sha; tree = @($items) }
 $commit = Invoke-GitHubJson 'POST' "repos/$Repository/git/commits" @{
-    message = 'feat: refresh curated national regulations from official texts'
+    message = 'feat: improve scoped search and add contract interpretation'
     tree = $tree.sha
     parents = @($parentSha)
 }
