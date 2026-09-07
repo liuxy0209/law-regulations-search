@@ -8,8 +8,10 @@ const crypto = require('crypto');
 const fs = require('fs');
 const vm = require('vm');
 
-const databasePath = process.argv[2] || 'law_db.js';
-const outputPaths = process.argv.slice(3);
+const args = process.argv.slice(2);
+const decryptOnly = args[0] === '--decrypt';
+const databasePath = decryptOnly ? (args[1] || 'law_db.js') : (args[0] || 'law_db.js');
+const outputPaths = decryptOnly ? args.slice(2) : args.slice(1);
 const password = process.env.LAW_DATABASE_PASSWORD;
 const nextPassword = process.env.NEW_LAW_DATABASE_PASSWORD || password;
 if (!password || !nextPassword) throw new Error('请通过环境变量 LAW_DATABASE_PASSWORD 提供口令。');
@@ -28,21 +30,26 @@ function loadDatabase(source) {
 }
 
 const database = loadDatabase(fs.readFileSync(databasePath, 'utf8'));
-const salt = crypto.randomBytes(16);
-const iv = crypto.randomBytes(12);
-const iterations = 600000;
-const hash = 'SHA-256';
-const key = crypto.pbkdf2Sync(nextPassword, salt, iterations, 32, 'sha256');
-const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-const ciphertext = Buffer.concat([cipher.update(JSON.stringify(database), 'utf8'), cipher.final()]);
-const payload = {
-  version: 1,
-  kdf: { name: 'PBKDF2', hash, iterations },
-  salt: salt.toString('base64'),
-  iv: iv.toString('base64'),
-  ciphertext: ciphertext.toString('base64'),
-  tag: cipher.getAuthTag().toString('base64')
-};
-const output = 'globalThis.LAW_DATABASE_ENCRYPTED = ' + JSON.stringify(payload) + ';\n';
+let output;
+if (decryptOnly) {
+  output = 'const LAW_DATABASE = ' + JSON.stringify(database, null, 2) + ';\n';
+} else {
+  const salt = crypto.randomBytes(16);
+  const iv = crypto.randomBytes(12);
+  const iterations = 600000;
+  const hash = 'SHA-256';
+  const key = crypto.pbkdf2Sync(nextPassword, salt, iterations, 32, 'sha256');
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const ciphertext = Buffer.concat([cipher.update(JSON.stringify(database), 'utf8'), cipher.final()]);
+  const payload = {
+    version: 1,
+    kdf: { name: 'PBKDF2', hash, iterations },
+    salt: salt.toString('base64'),
+    iv: iv.toString('base64'),
+    ciphertext: ciphertext.toString('base64'),
+    tag: cipher.getAuthTag().toString('base64')
+  };
+  output = 'globalThis.LAW_DATABASE_ENCRYPTED = ' + JSON.stringify(payload) + ';\n';
+}
 (outputPaths.length ? outputPaths : [databasePath]).forEach((outputPath) => fs.writeFileSync(outputPath, output, 'utf8'));
-console.log(JSON.stringify({ encrypted: true, documents: database.length, iterations, outputs: outputPaths.length || 1 }));
+console.log(JSON.stringify({ encrypted: !decryptOnly, documents: database.length, outputs: outputPaths.length || 1 }));
