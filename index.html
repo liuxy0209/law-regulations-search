@@ -1,0 +1,1927 @@
+<!DOCTYPE html>
+<!--
+ * =============================================================================
+ * 法律法规与制度检索系统 — 前端页面 (检索学习.html)
+ * =============================================================================
+ * 【文件说明】
+ *   纯前端单页应用，双击即可在浏览器中打开，无需服务器。
+ *   通过 <script src="law_db.js"> 加载加密数据，输入访问口令后实现关键字搜索与多维度筛选。
+ *
+ * 【页面结构】
+ *   1. <style>  — 全部样式（CSS 变量、布局、卡片、分页、水印等）
+ *   2. <body>   — 页面骨架（页头、搜索框、筛选栏、侧边栏、结果区）
+ *   3. <script src="law_db.js"> — 引入加密的法律条文数据库
+ *   4. <script> — 交互逻辑（搜索、筛选、分页、详情查看、噪音清理、水印）
+ *
+ * 【核心函数速查】
+ *   doSearch()      — 执行搜索（关键字 + 筛选条件）
+ *   renderResults() — 渲染搜索结果列表（卡片 + 分页）
+ *   viewDoc()       — 查看某部法律/制度的完整条文
+ *   toggleFilter()  — 切换筛选项（来源/分类/年份）
+ *   cleanNoise()    — 清理 PDF 提取产生的噪音字符
+ *   nl2br()         — 清除 PDF 硬换行
+ *   escapeHtml()    — HTML 转义，防止 XSS
+ *   highlightText() — 搜索关键词高亮
+ *
+ * 【数据依赖】
+ *   law_db.js 中的加密数据库在口令验证后解密为 LAW_DATABASE 数组
+ *   元素结构：{title, type, sub_category, year, source, full_text, articles:[{number, content}]}
+ *
+ * 【作者】刘霄阳 整理
+ * =============================================================================
+-->
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>法律法规检索系统</title>
+    <style>
+        /* =========================================================================
+         * CSS 变量定义（统一配色体系，修改此处即可全局换色）
+         * ========================================================================= */
+        :root {
+            --primary: #1a56db;
+            --primary-light: #e8effc;
+            --primary-dark: #1040a0;
+            --bg: #f5f7fb;
+            --card-bg: #ffffff;
+            --text: #1f2937;
+            --text-secondary: #6b7280;
+            --border: #e5e7eb;
+            --accent: #059669;
+            --accent-light: #ecfdf5;
+            --warn: #d97706;
+            --warn-light: #fef3c7;
+            --danger: #dc2626;
+            --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
+            --shadow-lg: 0 4px 12px rgba(0,0,0,0.1);
+            --radius: 8px;
+        }
+
+        /* 基础重置：清除浏览器默认 margin/padding，统一盒模型 */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        /* 页面主体：字体、背景色、行高 */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        .skip-link { position: fixed; top: 8px; left: 8px; z-index: 100; padding: 8px 12px; background: #fff; color: var(--primary-dark); border-radius: var(--radius); transform: translateY(-160%); }
+        .skip-link:focus-visible { transform: translateY(0); }
+        .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+        button, a, input { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+        button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid #f59e0b; outline-offset: 2px; }
+
+        /* ===================== 页头 Header ===================== */
+        .header {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white;
+            padding: 28px 0 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        .header-inner {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+        .header h1 {
+            font-size: 26px;
+            font-weight: 700;
+            margin-bottom: 6px;
+            letter-spacing: 1px;
+        }
+        .header p {
+            font-size: 14px;
+            opacity: 0.85;
+        }
+        .data-notice {
+            max-width: 1200px;
+            margin: 14px auto 0;
+            padding: 10px 14px;
+            border: 1px solid #f6c36b;
+            border-radius: var(--radius);
+            background: var(--warn-light);
+            color: #7c4a03;
+            font-size: 13px;
+        }
+
+        /* ===================== 搜索框 ===================== */
+        .search-section {
+            max-width: 1200px;
+            margin: -12px auto 0;
+            padding: 0 24px;
+            position: relative;
+            z-index: 10;
+        }
+        .search-box {
+            background: var(--card-bg);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-lg);
+            padding: 20px 24px;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+        .search-input-wrap {
+            flex: 1;
+            position: relative;
+        }
+        .search-input-wrap svg {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-secondary);
+        }
+        .search-input {
+            width: 100%;
+            padding: 12px 16px 12px 44px;
+            border: 2px solid var(--border);
+            border-radius: var(--radius);
+            font-size: 16px;
+            transition: border-color 0.2s;
+            outline: none;
+        }
+        .search-input:focus-visible {
+            border-color: var(--primary);
+        }
+        .search-btn {
+            padding: 12px 28px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: var(--radius);
+            font-size: 15px;
+            cursor: pointer;
+            font-weight: 600;
+            white-space: nowrap;
+            transition: background 0.2s;
+        }
+        .search-btn:hover { background: var(--primary-dark); }
+        .scope-picker { display: flex; align-items: center; gap: 8px; margin: 10px 4px 0; color: var(--text-secondary); font-size: 13px; }
+        .scope-picker label { font-weight: 600; color: var(--text); white-space: nowrap; }
+        .scope-picker input { width: min(100%, 520px); padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); font: inherit; }
+        .scope-picker input:focus-visible { border-color: var(--primary); }
+        .scope-clear { border: 0; padding: 4px 7px; color: var(--primary-dark); background: transparent; cursor: pointer; font: inherit; }
+        .scope-clear[hidden] { display: none; }
+        .scope-hint { font-size: 12px; color: var(--text-secondary); }
+
+        /* ===================== 筛选标签栏 ===================== */
+        .filter-section {
+            max-width: 1200px;
+            margin: 16px auto 0;
+            padding: 0 24px;
+        }
+        .filter-row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .filter-label {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-right: 4px;
+            font-weight: 600;
+            min-width: 60px;
+        }
+        .filter-tag {
+            padding: 4px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+            cursor: pointer;
+            border: 1px solid var(--border);
+            background: var(--card-bg);
+            color: var(--text-secondary);
+            transition: background 0.15s, color 0.15s, border-color 0.15s;
+            user-select: none;
+        }
+        .filter-tag:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+        .filter-tag.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+        button.filter-tag { font-family: inherit; }
+
+        /* ===================== 主区域布局（侧边栏 + 结果区） ===================== */
+        .main-section {
+            max-width: 1200px;
+            margin: 20px auto 40px;
+            padding: 0 24px;
+            display: flex;
+            gap: 20px;
+        }
+
+        /* ===================== 侧边栏（数据概览 + 文件列表） ===================== */
+        .sidebar {
+            width: 240px;
+            flex-shrink: 0;
+        }
+        .sidebar-card {
+            background: var(--card-bg);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        .sidebar-card h2 {
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border);
+        }
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            font-size: 13px;
+        }
+        .stat-item .num {
+            font-weight: 700;
+            color: var(--primary);
+        }
+        .doc-list-item {
+            padding: 8px 10px;
+            font-size: 13px;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: background 0.15s;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .doc-list-item:hover {
+            background: var(--primary-light);
+        }
+        .doc-list-item.active {
+            background: var(--primary);
+            color: white;
+        }
+
+        /* ===================== 搜索结果区 ===================== */
+        .results-area {
+            flex: 1;
+            min-width: 0;
+        }
+        .results-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .results-header h2 {
+            font-size: 16px;
+            color: var(--text);
+        }
+        .results-count {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        /* ===================== 结果卡片（单条搜索结果） ===================== */
+        .result-card {
+            background: var(--card-bg);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            margin-bottom: 12px;
+            overflow: hidden;
+            transition: box-shadow 0.2s;
+        }
+        .result-card:hover {
+            box-shadow: var(--shadow-lg);
+        }
+        .result-card-header {
+            padding: 14px 18px;
+            cursor: pointer;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 6px 12px;
+            align-items: start;
+        }
+        .result-title { min-width: 0; }
+        .result-open { display: block; width: 100%; border: 0; padding: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
+        .result-badges { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+        .result-card-details { grid-column: 1 / -1; min-width: 0; }
+        .result-card-header:hover {
+            background: #f9fafb;
+        }
+        .result-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text);
+            flex: 1;
+        }
+        .result-badge {
+            font-size: 11px;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-weight: 600;
+            margin-left: 10px;
+            white-space: nowrap;
+        }
+        .badge-law { background: #dbeafe; color: #1d4ed8; }
+        .badge-judicial { background: #f3e8ff; color: #7e22ce; }
+        .badge-telecom { background: #dcfce7; color: #166534; }
+        .badge-study { background: #fef3c7; color: #92400e; }
+        .badge-status-ok { background: var(--accent-light); color: #047857; }
+        .badge-status-review { background: var(--warn-light); color: #92400e; }
+        .badge-status-old { background: #fee2e2; color: #b91c1c; }
+        .result-meta {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+        .result-article {
+            padding: 12px 18px;
+            border-top: 1px solid var(--border);
+            font-size: 14px;
+            line-height: 1.8;
+        }
+        .result-article .article-title {
+            font-weight: 700;
+            color: var(--primary-dark);
+            margin-bottom: 4px;
+        }
+        .result-article .article-content {
+            color: var(--text);
+        }
+        .article-jump { margin-top: 8px; border: 0; background: transparent; color: var(--primary); font: inherit; cursor: pointer; text-decoration: underline; }
+        .match-context { margin-top: 7px; padding: 7px 9px; border-left: 3px solid #bfdbfe; background: #f8fbff; color: var(--text-secondary); font-size: 12px; line-height: 1.6; }
+        .match-list-toggle { display: inline-flex; align-items: center; gap: 4px; margin: 10px 18px 2px; padding: 7px 10px; border: 1px solid #93c5fd; border-radius: 6px; background: #eff6ff; color: var(--primary-dark); font: inherit; font-size: 13px; cursor: pointer; }
+        .match-list-toggle:hover { background: #dbeafe; }
+        mark {
+            background: #fef08a;
+            padding: 1px 3px;
+            border-radius: 2px;
+        }
+        .collapse-icon {
+            font-size: 12px;
+            color: var(--text-secondary);
+            transition: transform 0.2s;
+        }
+        .collapse-icon.open { transform: rotate(90deg); }
+
+        /* ===================== 详情页（查看某部法律全文） ===================== */
+        .detail-panel {
+            background: var(--card-bg);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            padding: 24px;
+            margin-bottom: 12px;
+        }
+        .detail-panel h2 {
+            font-size: 18px;
+            margin-bottom: 12px;
+            color: var(--primary-dark);
+        }
+        .detail-panel .detail-meta {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+        .provenance-panel {
+            margin: 0 0 18px;
+            padding: 14px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            background: #fafcff;
+            font-size: 13px;
+        }
+        .provenance-panel h3 { font-size: 14px; margin-bottom: 8px; color: var(--primary-dark); }
+        .provenance-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 18px; }
+        .provenance-item { overflow-wrap: anywhere; }
+        .provenance-label { color: var(--text-secondary); margin-right: 5px; }
+        .quality-note { margin-top: 10px; color: #92400e; }
+        .provenance-panel a { color: var(--primary); }
+        .detail-article {
+            padding: 10px 0;
+            border-bottom: 1px dashed var(--border);
+        }
+        .detail-article { scroll-margin-top: 20px; content-visibility: auto; contain-intrinsic-size: auto 130px; }
+        /* 从结果页定位时必须先取得真实布局高度，避免长文的屏外预估高度造成跳转偏移。 */
+        .detail-panel.is-locating .detail-article { content-visibility: visible; contain-intrinsic-size: auto; }
+        .detail-article.is-targeted { background: #fff9df; box-shadow: 0 0 0 4px #fff9df; border-radius: 4px; }
+        .detail-search-action { margin: 14px 0 4px; padding: 8px 12px; border: 1px solid var(--primary); border-radius: 6px; background: #eff6ff; color: var(--primary-dark); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+        .detail-search-action:hover { background: #dbeafe; }
+        .detail-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 12px; }
+        .detail-actions .detail-search-action { margin: 0; }
+        .detail-secondary-action { padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; background: #fff; color: var(--primary-dark); font: inherit; font-size: 13px; cursor: pointer; }
+        .detail-secondary-action:hover { border-color: var(--primary); background: #f8fbff; }
+        .detail-layout { display: block; }
+        .detail-toc-slot { display: none; position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow-y: auto; }
+        .detail-toc-slot.is-active { display: block; }
+        .detail-toc { padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: #fafcff; }
+        .detail-toc[hidden] { display: none; }
+        .detail-toc h3 { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 8px; font-size: 14px; color: var(--primary-dark); }
+        .detail-toc button { display: block; width: 100%; padding: 6px 4px; border: 0; background: transparent; color: var(--text-secondary); text-align: left; font: inherit; font-size: 13px; line-height: 1.45; cursor: pointer; }
+        .detail-toc button:hover, .detail-toc button:focus-visible { color: var(--primary); text-decoration: underline; }
+        .toc-collapse, .toc-reopen { width: auto !important; padding: 4px 6px !important; border: 1px solid var(--border) !important; border-radius: 5px !important; background: #fff !important; color: var(--primary-dark) !important; font-size: 12px !important; white-space: nowrap; }
+        .toc-group { border-top: 1px solid #e5edf8; }
+        .toc-group:first-of-type { border-top: 0; }
+        .toc-parent { display: flex !important; align-items: center; gap: 6px; color: var(--text) !important; font-weight: 700 !important; }
+        .toc-arrow { display: inline-block; width: 14px; color: var(--primary); transition: transform .18s ease; }
+        .toc-parent[aria-expanded="true"] .toc-arrow { transform: rotate(90deg); }
+        .toc-children { margin: 0 0 4px 16px; padding-left: 8px; border-left: 2px solid #dbeafe; }
+        .toc-children button { font-size: 12px; }
+        .detail-body { min-width: 0; }
+        .mobile-toc-toggle { display: none; }
+        .article-tools { float: right; display: flex; gap: 8px; }
+        .article-copy { border: 0; background: transparent; color: var(--primary); font: inherit; font-size: 12px; cursor: pointer; }
+        .article-copy:hover { text-decoration: underline; }
+        .detail-article:last-child { border-bottom: none; }
+        .detail-article .da-title {
+            font-weight: 700;
+            color: var(--primary-dark);
+            margin-bottom: 4px;
+            font-size: 14px;
+        }
+        .detail-article .da-content {
+            font-size: 14px;
+            line-height: 1.8;
+            color: var(--text);
+        }
+        .da-content p { margin: 0 0 9px; }
+        .da-content p:last-child { margin-bottom: 0; }
+        .article-lead { color: var(--text); }
+        .article-item { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px; align-items: start; margin: 8px 0; padding: 8px 10px; border-radius: 7px; }
+        .article-item.level-1 { background: #f1f5f9; border-left: 3px solid #2563eb; }
+        .article-item.level-2 { margin-left: 22px; padding-left: 12px; background: #f8fbff; border-left: 2px solid #93c5fd; }
+        .article-item.level-3 { margin-left: 44px; padding: 5px 0 5px 12px; border-left: 1px dashed #bfdbfe; }
+        .article-item.level-4 { margin-left: 66px; padding: 4px 0 4px 12px; border-left: 1px dotted #bfdbfe; }
+        .article-marker { color: var(--primary-dark); font-weight: 700; white-space: nowrap; }
+        .article-item-body { min-width: 0; }
+        .article-chapter { margin: 18px 0 4px; color: var(--primary-dark); font-weight: 700; font-size: 16px; }
+        @media (max-width: 600px) { .article-item.level-2 { margin-left: 10px; } .article-item.level-3 { margin-left: 20px; } .article-item.level-4 { margin-left: 30px; } .article-item { padding: 7px 8px; gap: 6px; } }
+        .back-btn {
+            display: inline-block;
+            margin-bottom: 16px;
+            padding: 6px 16px;
+            font-size: 13px;
+            background: var(--primary-light);
+            color: var(--primary);
+            border: none;
+            border-radius: var(--radius);
+            cursor: pointer;
+        }
+        .back-btn:hover { background: var(--primary); color: white; }
+        .doc-list-item { display: block; width: 100%; padding: 7px 3px; border: 0; background: transparent; text-align: left; font: inherit; color: var(--text); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .doc-list-item:hover { color: var(--primary); text-decoration: underline; }
+        .load-more-btn { width: 100%; margin-top: 8px; padding: 7px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card-bg); color: var(--primary); cursor: pointer; }
+        .personal-card h2 span { float: right; font-size: 11px; font-weight: 400; }
+        .personal-section-title { margin: 10px 0 4px; color: var(--text-secondary); font-size: 12px; }
+        .personal-section-title:first-child { margin-top: 0; }
+        .personal-empty { color: var(--text-secondary); font-size: 12px; line-height: 1.6; }
+        .personal-doc { display: block; width: 100%; padding: 5px 2px; overflow: hidden; border: 0; background: transparent; color: var(--text); text-align: left; text-overflow: ellipsis; white-space: nowrap; font: inherit; font-size: 12px; cursor: pointer; }
+        .personal-doc:hover { color: var(--primary); text-decoration: underline; }
+        .status-line { min-height: 20px; margin: 8px 0 0; color: var(--text-secondary); font-size: 13px; }
+
+        /* ===================== 分页控件 ===================== */
+        .pagination {
+            display: flex;
+            justify-content: center;
+            gap: 6px;
+            margin-top: 20px;
+        }
+        .page-btn {
+            padding: 6px 14px;
+            border: 1px solid var(--border);
+            background: var(--card-bg);
+            border-radius: var(--radius);
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .page-btn:hover { border-color: var(--primary); color: var(--primary); }
+        .page-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+        .page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        /* ===================== 欢迎页（初始状态） ===================== */
+        .welcome {
+            text-align: center;
+            padding: 80px 20px;
+            color: var(--text-secondary);
+        }
+        .welcome h2 { font-size: 22px; margin-bottom: 12px; color: var(--text); }
+        .welcome p { font-size: 15px; margin-bottom: 6px; }
+        .welcome .stats {
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+            margin-top: 32px;
+        }
+        .welcome .stat-box {
+            text-align: center;
+        }
+        .welcome .stat-box .big-num {
+            font-size: 36px;
+            font-weight: 700;
+            color: var(--primary);
+        }
+        .welcome .stat-box .label {
+            font-size: 13px;
+            margin-top: 4px;
+        }
+        .topic-section { display: flex; max-width: 1200px; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px auto 0; padding: 0 24px; }
+        .topic-label { color: var(--text-secondary); font-size: 13px; }
+        .topic-chip { padding: 6px 10px; border: 1px solid #bfdbfe; border-radius: 999px; background: #f8fbff; color: var(--primary-dark); font: inherit; font-size: 13px; cursor: pointer; }
+        .topic-chip:hover { border-color: var(--primary); background: #eff6ff; }
+
+        /* ===================== 响应式适配（移动端隐藏侧边栏） ===================== */
+        @media (max-width: 768px) {
+            .sidebar { display: none; }
+            .main-section { flex-direction: column; padding: 0 14px; margin-top: 14px; }
+            .search-section, .filter-section { padding: 0 14px; }
+            .search-box { flex-direction: column; padding: 14px; }
+            .search-btn { width: 100%; }
+            .filter-row { gap: 6px; }
+            .filter-label { min-width: 42px; }
+            .filter-tag { padding: 6px 10px; }
+            .result-card-header { grid-template-columns: 1fr; gap: 6px; }
+            .result-badges { grid-column: 1; grid-row: 2; justify-content: flex-start; }
+            .result-badge { margin-left: 0; }
+            .welcome { padding: 42px 12px; }
+            .welcome .stats { flex-wrap: wrap; gap: 18px; }
+            .provenance-grid { grid-template-columns: 1fr; }
+            .pagination { flex-wrap: wrap; }
+            .header h1 { font-size: 20px; }
+            .topic-section { padding: 0 14px; }
+            .topic-label { width: 100%; }
+            .detail-panel { padding: 16px; }
+            .detail-toc-slot { display: none !important; }
+            .detail-toc[hidden] { display: none; }
+            .detail-actions { gap: 6px; }
+            .detail-actions button { flex: 1 1 auto; }
+            .result-article { padding: 12px; }
+            .match-list-toggle { margin-left: 12px; }
+        }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; } }
+
+        /* ===================== 作者水印（CSS 伪元素，隐蔽低透明度） ===================== */
+        body::after {
+            content: 'LiuXY整理';
+            position: fixed;
+            bottom: 3px;
+            right: 10px;
+            font-size: 10px;
+            color: rgba(26,86,219,0.07);
+            pointer-events: none;
+            z-index: 0;
+            letter-spacing: 1px;
+        }
+        /* 成果署名：背景淡印 + 固定角标。只作署名提示，不影响页面操作。 */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 1;
+            opacity: 0.055;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='260' viewBox='0 0 360 260'%3E%3Ctext x='44' y='145' transform='rotate(-28 180 130)' fill='%231a56db' font-family='Arial,Microsoft YaHei,sans-serif' font-size='15' letter-spacing='2'%3ELiuXY%E6%95%B4%E7%90%86%3C/text%3E%3C/svg%3E");
+            background-repeat: repeat;
+        }
+        body::after {
+            content: 'LiuXY整理';
+            bottom: 8px;
+            right: 14px;
+            font-size: 11px;
+            color: rgba(26,86,219,0.38);
+            z-index: 20;
+            letter-spacing: 0.8px;
+            text-shadow: 0 1px 2px rgba(255,255,255,0.75);
+        }
+        /* ===================== 意见反馈（固定入口 + 对话框） ===================== */
+        .feedback-fab { position: fixed; right: 16px; bottom: 40px; z-index: 30; border: 1px solid rgba(26,86,219,0.25); border-radius: 999px; padding: 8px 13px; background: rgba(255,255,255,0.93); color: var(--primary-dark); box-shadow: var(--shadow); font-size: 13px; cursor: pointer; }
+        .feedback-fab:hover { background: #fff; border-color: var(--primary); }
+        .feedback-dialog { width: min(92vw, 520px); border: 0; border-radius: 12px; padding: 0; box-shadow: 0 18px 54px rgba(15,23,42,0.28); }
+        .feedback-dialog::backdrop { background: rgba(15,23,42,0.48); }
+        .feedback-content { padding: 22px; }
+        .feedback-content h2 { font-size: 18px; margin-bottom: 5px; }
+        .feedback-content p { color: var(--text-secondary); font-size: 13px; margin-bottom: 14px; }
+        .feedback-content label { display: block; font-size: 13px; font-weight: 600; margin-top: 10px; }
+        .feedback-content input, .feedback-content textarea { width: 100%; margin-top: 5px; padding: 9px 10px; border: 1px solid var(--border); border-radius: 6px; font: inherit; }
+        .feedback-consent { display: flex !important; align-items: flex-start; gap: 8px; font-weight: 400 !important; line-height: 1.45; }
+        .feedback-consent input { width: auto; margin: 3px 0 0; }
+        .feedback-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+        .feedback-cancel { background: #fff; color: var(--text-secondary); border: 1px solid var(--border); }
+        .feedback-status { min-height: 20px; margin-top: 8px; font-size: 13px; color: var(--text-secondary); }
+        .feedback-status.error { color: var(--danger); }
+        .feedback-status.success { color: var(--accent); }
+        .access-gate { position: fixed; inset: 0; z-index: 999; display: flex; align-items: center; justify-content: center; padding: 20px; background: linear-gradient(135deg, #0b255f 0%, #1040a0 58%, #1a56db 100%); }
+        .access-card { width: min(100%, 420px); padding: 30px; border-radius: 14px; background: #fff; box-shadow: 0 24px 64px rgba(0,0,0,.28); }
+        .access-card h1 { margin-bottom: 8px; color: var(--primary-dark); font-size: 22px; }
+        .access-card p { margin-bottom: 16px; color: var(--text-secondary); font-size: 14px; }
+        .access-card label { display: block; margin-bottom: 7px; color: var(--text); font-size: 14px; font-weight: 600; }
+        .access-card input { width: 100%; margin-bottom: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 7px; font: inherit; }
+        .access-card button { width: 100%; }
+        .access-status { min-height: 20px; margin-top: 10px; color: var(--danger); font-size: 13px; }
+    </style>
+</head>
+<body>
+<section class="access-gate" id="accessGate" aria-labelledby="accessTitle">
+    <form class="access-card" id="accessForm">
+        <h1 id="accessTitle">制度文件访问</h1>
+        <p>请输入访问口令后使用检索系统。口令仅用于本机解密，不会上传或保存。</p>
+        <label for="accessPassword">访问口令</label>
+        <input id="accessPassword" type="password" autocomplete="current-password" required autofocus>
+        <button class="search-btn" id="accessSubmit" type="submit">进入检索系统</button>
+        <p class="access-status" id="accessStatus" role="alert" aria-live="assertive"></p>
+    </form>
+</section>
+<a class="skip-link" href="#mainContent">跳至检索结果</a>
+
+<!-- ==================== 页头 Header ==================== -->
+<div class="header">
+    <div class="header-inner">
+        <h1>法律法规与制度检索系统</h1>
+        <p>涵盖国家法律、行政法规、最高法司法解释与中国电信规章制度，支持关键字与多维度筛选检索</p>
+    </div>
+</div>
+
+<div class="data-notice">检索结果仅作线索参考，不构成现行依据。请以详情页的“来源与版本信息”为准；含质量提示的文件仍应对照原始公报或受控原件。本站会保留必要的安全日志。</div>
+
+<!-- ==================== 搜索框 ==================== -->
+<div class="search-section">
+    <div class="search-box">
+        <div class="search-input-wrap">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.35-4.35"></path>
+            </svg>
+            <label class="sr-only" for="searchInput">检索法律法规与制度</label>
+            <input class="search-input" id="searchInput" name="q" type="search" placeholder="输入关键字搜索，如：招标、供应商管理、合同、履约保证金…" autocomplete="off">
+        </div>
+        <button class="search-btn" id="searchBtn" type="button">搜索</button>
+    </div>
+    <div class="scope-picker">
+        <label for="scopeDocInput">检索范围</label>
+        <input id="scopeDocInput" list="scopeDocOptions" type="search" placeholder="全部文件；输入并从提示中选择指定法律或制度" autocomplete="off" aria-describedby="scopeHint">
+        <datalist id="scopeDocOptions"></datalist>
+        <button class="scope-clear" id="scopeClear" type="button" hidden>清除范围</button>
+        <span class="scope-hint" id="scopeHint">留空即检索全部文件</span>
+    </div>
+    <p class="status-line" id="statusLine" aria-live="polite"></p>
+</div>
+
+<!-- ==================== 筛选标签栏（来源/分类/年份，由 JS 动态填充分类和年份选项） ==================== -->
+<div class="filter-section">
+    <div class="filter-row">
+        <span class="filter-label">来源：</span>
+        <button class="filter-tag active" type="button" data-filter="source" data-value="all" aria-pressed="true">全部</button>
+        <button class="filter-tag" type="button" data-filter="source" data-value="国家法律" aria-pressed="false">国家法律</button>
+        <button class="filter-tag" type="button" data-filter="source" data-value="国家行政法规" aria-pressed="false">国家行政法规</button>
+        <button class="filter-tag" type="button" data-filter="source" data-value="最高人民法院司法解释" aria-pressed="false">最高法司法解释</button>
+        <button class="filter-tag" type="button" data-filter="source" data-value="电信制度文件" aria-pressed="false">电信制度文件</button>
+        <button class="filter-tag" type="button" data-filter="source" data-value="学习记录" aria-pressed="false">学习记录</button>
+    </div>
+    <div class="filter-row" id="subCategoryRow">
+        <span class="filter-label">分类：</span>
+        <button class="filter-tag active" type="button" data-filter="category" data-value="all" aria-pressed="true">全部</button>
+    </div>
+    <div class="filter-row" id="yearRow">
+        <span class="filter-label">年份：</span>
+        <button class="filter-tag active" type="button" data-filter="year" data-value="all" aria-pressed="true">全部</button>
+    </div>
+    <div class="filter-row" id="validityRow">
+        <span class="filter-label">效力：</span>
+        <button class="filter-tag active" type="button" data-filter="validity" data-value="all" aria-pressed="true">全部</button>
+        <button class="filter-tag" type="button" data-filter="validity" data-value="current" aria-pressed="false">仅现行有效</button>
+        <button class="filter-tag" type="button" data-filter="validity" data-value="review" aria-pressed="false">待核验/非现行</button>
+    </div>
+</div>
+
+<section class="topic-section" aria-label="采购供应链专题入口">
+    <span class="topic-label">采购供应链专题：</span>
+    <button type="button" class="topic-chip" data-topic-keyword="采购">采购管理</button>
+    <button type="button" class="topic-chip" data-topic-keyword="供应商">供应商管理</button>
+    <button type="button" class="topic-chip" data-topic-keyword="质量">质量管理</button>
+    <button type="button" class="topic-chip" data-topic-keyword="招标">招标投标</button>
+    <button type="button" class="topic-chip" data-topic-keyword="合同">合同合规</button>
+    <button type="button" class="topic-chip" data-topic-keyword="物流">物流库存</button>
+</section>
+
+<!-- ==================== 主区域：左侧边栏 + 右侧结果区 ==================== -->
+<main class="main-section" id="mainContent" tabindex="-1">
+    <!-- ========== 侧边栏：数据概览 + 文件列表 ========== -->
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-card">
+            <h2>数据概览</h2>
+            <div id="statsArea"></div>
+        </div>
+        <div class="sidebar-card">
+            <h2>文件列表</h2>
+            <div id="docListArea" style="max-height:400px;overflow-y:auto;"></div>
+        </div>
+        <div class="sidebar-card personal-card">
+            <h2>我的常用 <span>仅保存在本机</span></h2>
+            <div id="personalListArea"></div>
+        </div>
+        <div class="detail-toc-slot" id="detailTocSidebar" aria-live="polite"></div>
+    </div>
+
+    <!-- ========== 搜索结果区（初始显示欢迎页，搜索后显示结果卡片） ========== -->
+    <div class="results-area" id="resultsArea">
+        <div class="welcome" id="welcomeArea">
+            <h2>欢迎使用法律法规检索系统</h2>
+            <p>输入关键字即可快速检索相关法律条目</p>
+            <p>支持按来源、分类、年份多维度筛选</p>
+            <div class="stats" id="welcomeStats"></div>
+        </div>
+    </div>
+</main>
+
+<button class="feedback-fab" id="feedbackOpen" type="button" aria-haspopup="dialog">意见反馈</button>
+<dialog class="feedback-dialog" id="feedbackDialog" aria-labelledby="feedbackTitle">
+    <form class="feedback-content" id="feedbackForm">
+        <h2 id="feedbackTitle">提交意见反馈</h2>
+        <p>提交后会直接送达管理员。姓名和联系方式可不填。</p>
+        <label for="feedbackName">姓名或称呼（可选）</label>
+        <input id="feedbackName" name="name" maxlength="50" autocomplete="name">
+        <label for="feedbackContact">联系方式（可选）</label>
+        <input id="feedbackContact" name="contact" maxlength="100" autocomplete="email">
+        <label for="feedbackMessage">意见内容</label>
+        <textarea id="feedbackMessage" name="message" rows="5" required placeholder="请描述具体制度、条款或改进建议"></textarea>
+        <p class="feedback-status" id="feedbackStatus" aria-live="polite"></p>
+        <div class="feedback-actions"><button class="feedback-cancel" id="feedbackCancel" type="button">取消</button><button class="search-btn" id="feedbackSubmit" type="submit">提交反馈</button></div>
+    </form>
+</dialog>
+
+<!-- ========== 引入加密法律库；正确口令仅在浏览器内存中解密 ========== -->
+<script src="law_db.js"></script>
+
+<!-- =========================================================================
+     交互逻辑（搜索 / 筛选 / 分页 / 详情查看 / 噪音清理 / 水印）
+     ========================================================================= -->
+<script>
+// ===== 全局状态 =====
+// URL 记录关键词、全部筛选、页码、文档 ID 和条款号，使检索结果可复制、刷新和引用。
+let LAW_DATABASE = [];
+let currentFilters = { source: 'all', category: 'all', year: 'all', validity: 'all' };
+let searchResults = [];
+let currentPage = 1;
+const PAGE_SIZE = 15;
+const SIDEBAR_PAGE_SIZE = 50;
+let visibleDocCount = SIDEBAR_PAGE_SIZE;
+let viewingDoc = null;
+let viewingArticle = null;
+let searchScopeDocId = null;
+const expandedMatchDocuments = new Set();
+const FAVORITES_STORAGE_KEY = 'law-regulations-search:favorites:v1';
+const RECENT_STORAGE_KEY = 'law-regulations-search:recent:v1';
+const DEFAULT_DOCUMENT_ORDER = [
+    '中华人民共和国宪法',
+    '中华人民共和国民法典',
+    '最高人民法院关于适用《中华人民共和国民法典》合同编通则若干问题的解释',
+    '中华人民共和国招标投标法',
+    '中华人民共和国招标投标法实施条例',
+    '中华人民共和国刑法',
+    '中华人民共和国政府采购法',
+    '中华人民共和国政府采购法实施条例',
+    '中华人民共和国公司法',
+    '中华人民共和国反垄断法',
+    '中华人民共和国反不正当竞争法',
+    '中华人民共和国价格法',
+    '中华人民共和国电子商务法',
+    '中华人民共和国网络安全法',
+    '中华人民共和国数据安全法',
+    '中华人民共和国个人信息保护法'
+];
+const TELECOM_DOCUMENT_ORDER = [
+    '《中国电信集团〔2024〕320号-中国电信集团采购管理办法》',
+    '《中国电信集团〔2024〕319号-中国电信集团供应商管理办法》',
+    '《中国电信集团〔2012〕983号-中国电信集团采购物资质量管理办法（试行）》',
+    '《中国电信集团〔2026〕208号-中国电信集团采购招标投标管理办法》'
+];
+var _ck=[0,76,0,105,0,117,0,88,0,89,101,116,116,6];
+const ADMIN_API_BASE = 'https://liuxy-law-admin.liuxy0209.workers.dev/api';
+
+document.addEventListener('DOMContentLoaded', function() {
+    bindAccessGate();
+});
+
+function bindAccessGate() {
+    const form = document.getElementById('accessForm');
+    const passwordInput = document.getElementById('accessPassword');
+    const status = document.getElementById('accessStatus');
+    const submit = document.getElementById('accessSubmit');
+    form.addEventListener('submit', async function(event) {
+        event.preventDefault();
+        submit.disabled = true;
+        status.textContent = '正在验证访问口令…';
+        try {
+            LAW_DATABASE = await decryptLawDatabase(passwordInput.value);
+            passwordInput.value = '';
+            document.getElementById('accessGate').remove();
+            initializeLibrary();
+        } catch (error) {
+            passwordInput.value = '';
+            passwordInput.focus();
+            status.textContent = '访问口令不正确，请重试。';
+        } finally {
+            submit.disabled = false;
+        }
+    });
+}
+
+function base64ToBytes(value) {
+    const binary = atob(value);
+    return Uint8Array.from(binary, function(char) { return char.charCodeAt(0); });
+}
+
+async function decryptLawDatabase(password) {
+    const encrypted = window.LAW_DATABASE_ENCRYPTED;
+    if (!encrypted || encrypted.version !== 1 || !window.crypto || !window.crypto.subtle) throw new Error('加密法律库不可用');
+    const encoder = new TextEncoder();
+    const passwordKey = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveKey']);
+    const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: base64ToBytes(encrypted.salt), iterations: encrypted.kdf.iterations, hash: encrypted.kdf.hash }, passwordKey, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+    const combined = new Uint8Array(base64ToBytes(encrypted.ciphertext).length + base64ToBytes(encrypted.tag).length);
+    combined.set(base64ToBytes(encrypted.ciphertext));
+    combined.set(base64ToBytes(encrypted.tag), base64ToBytes(encrypted.ciphertext).length);
+    const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: base64ToBytes(encrypted.iv) }, key, combined);
+    const database = JSON.parse(new TextDecoder().decode(plaintext));
+    if (!Array.isArray(database)) throw new Error('法律库格式无效');
+    return database;
+}
+
+function initializeLibrary() {
+    normalizeAuthorityMetadata();
+    initFilters();
+    initScopePicker();
+    initStats();
+    initDocList();
+    initPersonalList();
+    bindEvents();
+    restoreUrlState();
+    recordAnonymousVisit();
+}
+
+function bindEvents() {
+    document.getElementById('searchBtn').addEventListener('click', function() { startSearch(); });
+    document.getElementById('searchInput').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') startSearch();
+    });
+    document.getElementById('scopeDocInput').addEventListener('change', function() { syncScopeFromInput(false); });
+    document.getElementById('scopeDocInput').addEventListener('input', function(e) {
+        if (!e.target.value.trim()) { searchScopeDocId = null; updateScopePicker(); }
+    });
+    document.getElementById('scopeClear').addEventListener('click', function() {
+        searchScopeDocId = null;
+        document.getElementById('scopeDocInput').value = '';
+        updateScopePicker();
+        doSearch({ resetPage: true });
+    });
+    document.querySelector('.filter-section').addEventListener('click', function(e) {
+        const button = e.target.closest('button[data-filter]');
+        if (button) toggleFilter(button);
+    });
+    document.getElementById('docListArea').addEventListener('click', function(e) {
+        const button = e.target.closest('button[data-doc-index]');
+        if (button) viewDoc(Number(button.dataset.docIndex));
+        if (e.target.closest('#loadMoreDocs')) { visibleDocCount += SIDEBAR_PAGE_SIZE; initDocList(); }
+    });
+    document.getElementById('personalListArea').addEventListener('click', function(e) {
+        const button = e.target.closest('button[data-doc-index]');
+        if (button) viewDoc(Number(button.dataset.docIndex));
+    });
+    document.getElementById('detailTocSidebar').addEventListener('click', function(e) {
+        const button = e.target.closest('button[data-action]');
+        if (!button) return;
+        if (button.dataset.action === 'toc-jump') scrollToDetailAnchor(button.dataset.anchor);
+        if (button.dataset.action === 'toggle-toc') toggleMobileToc();
+        if (button.dataset.action === 'toggle-toc-group') toggleTocGroup(button);
+    });
+    document.querySelector('.topic-section').addEventListener('click', function(e) {
+        const button = e.target.closest('button[data-topic-keyword]');
+        if (!button) return;
+        currentFilters = { source: 'all', category: 'all', year: 'all', validity: 'all' };
+        searchScopeDocId = null;
+        document.getElementById('searchInput').value = button.dataset.topicKeyword;
+        document.getElementById('scopeDocInput').value = '';
+        updateScopePicker();
+        updateFilterButtons();
+        doSearch({ resetPage: true });
+    });
+    document.getElementById('resultsArea').addEventListener('click', function(e) {
+        const button = e.target.closest('button[data-action]');
+        if (!button) return;
+        const action = button.dataset.action;
+        if (action === 'open-doc') viewDoc(Number(button.dataset.docIndex));
+        if (action === 'jump-article') viewDoc(Number(button.dataset.docIndex), button.dataset.article);
+        if (action === 'page') goPage(Number(button.dataset.page));
+        if (action === 'back') returnToResults();
+        if (action === 'search-current-doc') searchWithinCurrentDoc();
+        if (action === 'toggle-matches') toggleDocumentMatches(button.dataset.docId);
+        if (action === 'toc-jump') scrollToDetailAnchor(button.dataset.anchor);
+        if (action === 'toggle-toc') toggleMobileToc();
+        if (action === 'toggle-toc-group') toggleTocGroup(button);
+        if (action === 'copy-document-citation') copyDocumentCitation(Number(button.dataset.docIndex));
+        if (action === 'copy-article-citation') copyArticleCitation(Number(button.dataset.docIndex), button.dataset.article);
+        if (action === 'toggle-favorite') toggleFavorite(Number(button.dataset.docIndex));
+    });
+    window.addEventListener('popstate', restoreUrlState);
+    const feedbackDialog = document.getElementById('feedbackDialog');
+    document.getElementById('feedbackOpen').addEventListener('click', function() { feedbackDialog.showModal(); });
+    document.getElementById('feedbackCancel').addEventListener('click', function() { feedbackDialog.close(); });
+    document.getElementById('feedbackForm').addEventListener('submit', submitFeedback);
+}
+
+function recordAnonymousVisit() {
+    fetch(ADMIN_API_BASE + '/visit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: window.location.pathname }), keepalive: true }).catch(function() {});
+}
+
+function normalizeAuthorityMetadata() {
+    const telecomSourceName = '中国电信采购供应链管理平台';
+    const telecomSourceUrl = 'http://cgfz-zb-cloud.mss.ctc.com:11930/mss-purchase-zb/portal/portal';
+    LAW_DATABASE.forEach(function(doc) {
+        if (doc.source === '电信制度文件') {
+            doc.official_source = telecomSourceName;
+            doc.official_source_url = telecomSourceUrl;
+            doc.verification_status = 'official_source_verified';
+            doc.verification_scope = 'telecom-procurement-supply-chain-portal';
+        } else if (doc.source === '学习记录') {
+            doc.official_source = '无，个人学习';
+            doc.official_source_url = null;
+            doc.verification_status = 'personal_learning';
+            doc.verification_scope = 'personal-learning';
+        } else if (doc.verification_status === 'pending_manual_verification' || doc.verification_status === 'manual_review_approved') {
+            doc.verification_status = 'official_source_verified';
+            doc.verification_scope = 'official-source-verified';
+        }
+    });
+}
+
+async function submitFeedback(event) {
+    event.preventDefault();
+    const status = document.getElementById('feedbackStatus');
+    const submit = document.getElementById('feedbackSubmit');
+    const message = document.getElementById('feedbackMessage').value.trim();
+    if (!message) { status.textContent = '请填写意见内容。'; status.className = 'feedback-status error'; return; }
+    submit.disabled = true; status.className = 'feedback-status'; status.textContent = '正在提交…';
+    try {
+        const response = await fetch(ADMIN_API_BASE + '/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: document.getElementById('feedbackName').value, contact: document.getElementById('feedbackContact').value, message: message, page_url: window.location.href }) });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || '提交失败，请稍后重试。');
+        status.className = 'feedback-status success'; status.textContent = result.message;
+        event.target.reset();
+    } catch (error) { status.className = 'feedback-status error'; status.textContent = error.message || '提交失败，请稍后重试。'; }
+    finally { submit.disabled = false; }
+}
+
+// ===== 筛选、URL 与引用状态 =====
+function createFilterButton(filter, value, label) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'filter-tag';
+    button.dataset.filter = filter;
+    button.dataset.value = value;
+    button.setAttribute('aria-pressed', 'false');
+    button.textContent = label;
+    return button;
+}
+
+function initFilters() {
+    const cats = new Set();
+    const years = new Set();
+    LAW_DATABASE.forEach(function(doc) {
+        if (doc.sub_category) cats.add(doc.sub_category);
+        if (doc.year) years.add(doc.year);
+    });
+    const catFragment = document.createDocumentFragment();
+    Array.from(cats).sort().forEach(function(cat) { catFragment.appendChild(createFilterButton('category', cat, cat)); });
+    document.getElementById('subCategoryRow').appendChild(catFragment);
+    const yearFragment = document.createDocumentFragment();
+    Array.from(years).sort().reverse().forEach(function(year) { yearFragment.appendChild(createFilterButton('year', year, year)); });
+    document.getElementById('yearRow').appendChild(yearFragment);
+}
+
+function initScopePicker() {
+    const list = document.getElementById('scopeDocOptions');
+    const fragment = document.createDocumentFragment();
+    LAW_DATABASE.slice().sort(function(a, b) { return a.title.localeCompare(b.title, 'zh-CN'); }).forEach(function(doc) {
+        const option = document.createElement('option');
+        option.value = doc.title;
+        option.label = doc.source + '｜' + doc.title;
+        fragment.appendChild(option);
+    });
+    list.appendChild(fragment);
+    updateScopePicker();
+}
+
+function getScopedDocument() {
+    return searchScopeDocId ? LAW_DATABASE.find(function(doc) { return doc.document_id === searchScopeDocId; }) || null : null;
+}
+
+function updateScopePicker() {
+    const input = document.getElementById('scopeDocInput');
+    const hint = document.getElementById('scopeHint');
+    const clear = document.getElementById('scopeClear');
+    const doc = getScopedDocument();
+    if (doc) {
+        input.value = doc.title;
+        hint.textContent = '当前仅检索：' + doc.title;
+        clear.hidden = false;
+    } else {
+        hint.textContent = '留空即检索全部文件';
+        clear.hidden = true;
+    }
+}
+
+function syncScopeFromInput(reportInvalid) {
+    const input = document.getElementById('scopeDocInput');
+    const value = input.value.trim();
+    if (!value) {
+        searchScopeDocId = null;
+        updateScopePicker();
+        return true;
+    }
+    const doc = LAW_DATABASE.find(function(item) { return item.title === value; });
+    if (!doc) {
+        if (reportInvalid) {
+            document.getElementById('statusLine').textContent = '请从“检索范围”的提示列表中选择一份法律或制度，或清空后检索全部文件。';
+            input.focus();
+        }
+        return false;
+    }
+    searchScopeDocId = doc.document_id;
+    updateScopePicker();
+    return true;
+}
+
+function startSearch() {
+    if (!syncScopeFromInput(true)) return;
+    doSearch({ resetPage: true });
+}
+
+function searchWithinCurrentDoc() {
+    if (viewingDoc === null || !LAW_DATABASE[viewingDoc]) return;
+    searchScopeDocId = LAW_DATABASE[viewingDoc].document_id;
+    updateScopePicker();
+    returnToResults();
+    document.getElementById('searchInput').focus();
+}
+
+function toggleFilter(el) {
+    const filterKey = el.dataset.filter;
+    currentFilters[filterKey] = el.dataset.value;
+    currentPage = 1;
+    viewingDoc = null;
+    viewingArticle = null;
+    updateFilterButtons();
+    doSearch({ resetPage: false });
+}
+
+function updateFilterButtons() {
+    Object.keys(currentFilters).forEach(function(filterKey) {
+        document.querySelectorAll('.filter-tag[data-filter="' + filterKey + '"]').forEach(function(button) {
+            const active = button.dataset.value === currentFilters[filterKey];
+            button.classList.toggle('active', active);
+            button.setAttribute('aria-pressed', String(active));
+        });
+    });
+}
+
+function restoreUrlState() {
+    const params = new URLSearchParams(window.location.search);
+    ['source', 'category', 'year', 'validity'].forEach(function(key) {
+        const value = params.get(key);
+        const exists = Array.from(document.querySelectorAll('.filter-tag[data-filter="' + key + '"]')).some(function(button) { return button.dataset.value === value; });
+        if (value && exists) currentFilters[key] = value;
+    });
+    document.getElementById('searchInput').value = params.get('q') || '';
+    const scopeId = params.get('scope');
+    if (scopeId && LAW_DATABASE.some(function(doc) { return doc.document_id === scopeId; })) searchScopeDocId = scopeId;
+    updateScopePicker();
+    currentPage = Math.max(1, Number(params.get('page')) || 1);
+    updateFilterButtons();
+    doSearch({ resetPage: false, replace: true });
+    const docId = params.get('doc');
+    if (docId) {
+        const index = LAW_DATABASE.findIndex(function(doc) { return doc.document_id === docId; });
+        if (index >= 0) viewDoc(index, params.get('article') || null, true);
+    }
+}
+
+function writeUrl(replace) {
+    const params = new URLSearchParams();
+    const keyword = document.getElementById('searchInput').value.trim();
+    if (keyword) params.set('q', keyword);
+    Object.keys(currentFilters).forEach(function(key) { if (currentFilters[key] !== 'all') params.set(key, currentFilters[key]); });
+    if (searchScopeDocId) params.set('scope', searchScopeDocId);
+    if (currentPage > 1) params.set('page', String(currentPage));
+    let hash = '';
+    if (viewingDoc !== null) {
+        const doc = LAW_DATABASE[viewingDoc];
+        params.set('doc', doc.document_id);
+        if (viewingArticle !== null) { params.set('article', String(viewingArticle)); hash = '#article-' + doc.document_id + '-' + viewingArticle; }
+    }
+    const url = window.location.pathname + (params.toString() ? '?' + params.toString() : '') + hash;
+    history[replace ? 'replaceState' : 'pushState']({}, '', url);
+}
+
+// 条目标题、锚点均以原制度的结构为准：条文、章节、通知前言及未编号全文不再一律伪装成“第X条”。
+function sourceBadgeClass(doc) {
+    if (doc.source === '国家法律' || doc.source === '国家行政法规') return 'badge-law';
+    if (doc.source === '最高人民法院司法解释') return 'badge-judicial';
+    return doc.source === '学习记录' ? 'badge-study' : 'badge-telecom';
+}
+function chineseNumberValue(text) {
+    const digits = { '零': 0, '〇': 0, '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9 };
+    const units = { '十': 10, '百': 100, '千': 1000, '万': 10000 };
+    let total = 0; let current = 0;
+    String(text || '').split('').forEach(function(char) {
+        if (Object.prototype.hasOwnProperty.call(digits, char)) current = digits[char];
+        else if (units[char]) { total += (current || 1) * units[char]; current = 0; }
+    });
+    return total + current;
+}
+function documentStructureSummary(doc) {
+    const articlePattern = /^第([一二三四五六七八九十百千万零〇]+条)(之[一二三四五六七八九十百千万零〇]+)?$/;
+    const provisions = (doc.articles || []).filter(function(art) { return articlePattern.test(art.article_title || art.number || ''); });
+    if (!provisions.length) return (doc.articles || []).length + ' 个可检索条目';
+    const extraEntries = doc.articles.length - provisions.length;
+    const bases = new Map();
+    provisions.forEach(function(art) {
+        const match = String(art.article_title || art.number || '').match(articlePattern);
+        if (match && !bases.has(match[1])) bases.set(match[1], chineseNumberValue(match[1].replace('条', '')));
+    });
+    const addedArticles = provisions.length - bases.size;
+    let summary = provisions.length + ' 条文';
+    if (addedArticles > 0) {
+        const lastBase = Array.from(bases.entries()).sort(function(a, b) { return b[1] - a[1]; })[0];
+        summary += '（编号至第' + lastBase[0] + '，含 ' + addedArticles + ' 个“条之…”加条）';
+    }
+    if (extraEntries > 0) summary += '，另含 ' + extraEntries + ' 项题注/结构说明';
+    return summary;
+}
+function documentDefaultRank(doc) {
+    const legalIndex = DEFAULT_DOCUMENT_ORDER.indexOf(doc.title);
+    if (legalIndex >= 0) return legalIndex * 10;
+    const telecomIndex = TELECOM_DOCUMENT_ORDER.indexOf(doc.title);
+    if (telecomIndex >= 0) return 1000 + telecomIndex * 10;
+    if (doc.source === '国家法律' || doc.source === '国家行政法规' || doc.source === '最高人民法院司法解释') {
+        const categoryRank = { '采购与市场交易': 200, '合同与市场主体': 220, '财税、国资与审计': 240, '数据、网络与保密': 260, '质量、安全与生态': 280, '劳动用工': 300, '知识产权': 320, '基础法律': 340, '合同与民事司法解释': 360 };
+        return categoryRank[doc.sub_category] || 380;
+    }
+    if (doc.source === '电信制度文件') {
+        const categoryRank = { '供应商管理': 1100, '质量管理室': 1200, '采购管理室': 1300, '物流管理室': 1400, '合同合规': 1500, '内控管理': 1600, '业务外包管理': 1700 };
+        return categoryRank[doc.sub_category] || 1800;
+    }
+    return doc.source === '学习记录' ? 2000 : 1900;
+}
+function compareDocuments(left, right) {
+    return documentDefaultRank(left) - documentDefaultRank(right) || left.title.localeCompare(right.title, 'zh-CN');
+}
+function articleDisplayTitle(art) {
+    if (art.article_title) return art.article_title;
+    return art.number === '全文' ? '全文' : '第' + (art.number || '') + '条';
+}
+function articleKey(art, index) {
+    return art.article_id || ('number-' + String(art.number || index));
+}
+function escapeRegExp(text) {
+    return String(text || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+function renderArticleText(text, keyword) {
+    const plain = String(text || '').replace(/\r/g, '').replace(/\n[ \t　]+/g, '\n').trim();
+    const renderParagraphs = function(value) {
+        return value.split(/\n{2,}/).map(function(part) {
+            const compact = part.replace(/\n+/g, ' ').replace(/\s{2,}/g, ' ').trim();
+            if (!compact) return '';
+            const escaped = escapeHtml(compact);
+            return '<p>' + (keyword ? highlightText(escaped, keyword) : escaped) + '</p>';
+        }).join('');
+    };
+    // 仅识别原文行首的编号：不会把正文里提到的“第1条”或普通数字误拆成新项。
+    // 原文层级：一、 → （一） → 1. → （1）。
+    const marker = /(^|\n)\s*([一二三四五六七八九十百千万]+[、．.]|[（(]\s*[一二三四五六七八九十百千万]+\s*[）)]|\d+[、．.]|[（(]\s*\d+\s*[）)])/gm;
+    const items = [], matches = [];
+    let match;
+    while ((match = marker.exec(plain))) matches.push({ start: match.index + match[1].length, marker: match[2].replace(/\s+/g, '') });
+    if (!matches.length) return renderParagraphs(plain);
+    const lead = plain.slice(0, matches[0].start).trim();
+    let html = lead ? '<div class="article-lead">' + renderParagraphs(lead) + '</div>' : '';
+    matches.forEach(function(item, index) {
+        const next = matches[index + 1];
+        const content = plain.slice(item.start + item.marker.length, next ? next.start : plain.length).trim();
+        if (!content) return;
+        let level = 1;
+        if (/^[（(][一二三四五六七八九十百千万]/.test(item.marker)) level = 2;
+        else if (/^\d/.test(item.marker)) level = 3;
+        else if (/^[（(]\d/.test(item.marker)) level = 4;
+        items.push('<div class="article-item level-' + level + '"><span class="article-marker">' + escapeHtml(item.marker) + '</span><div class="article-item-body">' + renderParagraphs(content) + '</div></div>');
+    });
+    return html + items.join('');
+}
+function renderStructuredArticleContent(art, keyword) {
+    let text = cleanNoise(art.content || '');
+    if (art.structure_type === 'article') text = text.replace(/^\s*第\s*[一二三四五六七八九十百千万零〇0-9\s]+条\s*/, '');
+    else if ((art.structure_type === 'section' || art.structure_type === 'subsection') && art.article_title) {
+        const heading = escapeRegExp(art.article_title).replace(/\s+/g, '\\s*');
+        text = text.replace(new RegExp('^\\s*' + heading + '\\s*'), '');
+    }
+    return renderArticleText(text, keyword);
+}
+
+// ===== 数据统计（侧边栏「数据概览」） =====
+
+/**
+ * 初始化统计信息：统计国家法律、电信制度文件、学习记录及总条目数，
+ * 渲染到侧边栏的数据概览区域。
+ */
+function initStats() {
+    const lawCount = LAW_DATABASE.filter(function(d) { return d.source === '国家法律' || d.source === '国家行政法规'; }).length;
+    const judicialCount = LAW_DATABASE.filter(function(d) { return d.source === '最高人民法院司法解释'; }).length;
+    const telecomCount = LAW_DATABASE.filter(function(d) { return d.source === '电信制度文件'; }).length;
+    const studyCount = LAW_DATABASE.filter(function(d) { return d.source === '学习记录'; }).length;
+    const totalArticles = LAW_DATABASE.reduce(function(sum, d) { return sum + d.articles.length; }, 0);
+    const verifiedCount = LAW_DATABASE.filter(function(d) { return d.verification_status === 'official_text_verified' || d.verification_status === 'official_metadata_verified' || d.verification_status === 'official_source_verified'; }).length;
+    const reviewCount = LAW_DATABASE.filter(function(d) { return d.quality_flags && d.quality_flags.length; }).length;
+
+    document.getElementById('statsArea').innerHTML =
+        '<div class="stat-item"><span>国家法规</span><span class="num">' + lawCount + ' 部</span></div>' +
+        '<div class="stat-item"><span>最高法司法解释</span><span class="num">' + judicialCount + ' 部</span></div>' +
+        '<div class="stat-item"><span>电信制度文件</span><span class="num">' + telecomCount + ' 份</span></div>' +
+        '<div class="stat-item"><span>学习记录</span><span class="num">' + studyCount + ' 份</span></div>' +
+        '<div class="stat-item"><span>总条目数</span><span class="num">' + totalArticles + '</span></div>' +
+        '<div class="stat-item"><span>官网来源已核验</span><span class="num">' + verifiedCount + ' 份</span></div>' +
+        '<div class="stat-item"><span>待复核文件</span><span class="num">' + reviewCount + ' 份</span></div>';
+}
+
+/**
+ * 初始化欢迎页：在页面首次加载时显示总文件数、法律数、制度数、条目数。
+ */
+function initWelcome() {
+    const totalDocs = LAW_DATABASE.length;
+    const totalArticles = LAW_DATABASE.reduce(function(sum, d) { return sum + d.articles.length; }, 0);
+    const lawCount = LAW_DATABASE.filter(function(d) { return d.source === '国家法律' || d.source === '国家行政法规'; }).length;
+    const judicialCount = LAW_DATABASE.filter(function(d) { return d.source === '最高人民法院司法解释'; }).length;
+    const telecomCount = LAW_DATABASE.filter(function(d) { return d.source === '电信制度文件'; }).length;
+
+    document.getElementById('welcomeStats').innerHTML =
+        '<div class="stat-box"><div class="big-num">' + totalDocs + '</div><div class="label">文件总数</div></div>' +
+        '<div class="stat-box"><div class="big-num">' + lawCount + '</div><div class="label">国家法规</div></div>' +
+        '<div class="stat-box"><div class="big-num">' + judicialCount + '</div><div class="label">最高法司法解释</div></div>' +
+        '<div class="stat-box"><div class="big-num">' + telecomCount + '</div><div class="label">电信制度</div></div>' +
+        '<div class="stat-box"><div class="big-num">' + totalArticles + '</div><div class="label">可检索条目</div></div>';
+    _uiOpt();
+}
+
+function readLocalDocumentIds(key) {
+    try {
+        const value = JSON.parse(window.localStorage.getItem(key) || '[]');
+        return Array.isArray(value) ? value.filter(function(id) { return typeof id === 'string'; }) : [];
+    } catch (error) { return []; }
+}
+function saveLocalDocumentIds(key, ids) {
+    try { window.localStorage.setItem(key, JSON.stringify(ids)); } catch (error) {}
+}
+function isFavorite(docId) {
+    return readLocalDocumentIds(FAVORITES_STORAGE_KEY).includes(docId);
+}
+function toggleFavorite(docIndex) {
+    const doc = LAW_DATABASE[docIndex];
+    if (!doc) return;
+    const favorites = readLocalDocumentIds(FAVORITES_STORAGE_KEY);
+    const exists = favorites.includes(doc.document_id);
+    saveLocalDocumentIds(FAVORITES_STORAGE_KEY, exists ? favorites.filter(function(id) { return id !== doc.document_id; }) : [doc.document_id].concat(favorites));
+    initPersonalList();
+    viewDoc(docIndex, viewingArticle, true);
+    document.getElementById('statusLine').textContent = exists ? '已从本机收藏中移除。' : '已收藏到本机浏览器。';
+}
+function recordRecentDocument(docId) {
+    const recent = readLocalDocumentIds(RECENT_STORAGE_KEY).filter(function(id) { return id !== docId; });
+    saveLocalDocumentIds(RECENT_STORAGE_KEY, [docId].concat(recent).slice(0, 8));
+}
+function initPersonalList() {
+    const area = document.getElementById('personalListArea');
+    if (!area) return;
+    const toDoc = function(id) { return LAW_DATABASE.find(function(doc) { return doc.document_id === id; }); };
+    const favorites = readLocalDocumentIds(FAVORITES_STORAGE_KEY).map(toDoc).filter(Boolean);
+    const recent = readLocalDocumentIds(RECENT_STORAGE_KEY).map(toDoc).filter(Boolean);
+    let html = '';
+    if (favorites.length) {
+        html += '<div class="personal-section-title">收藏</div>';
+        favorites.slice(0, 8).forEach(function(doc) { html += '<button class="personal-doc" type="button" data-doc-index="' + LAW_DATABASE.indexOf(doc) + '" title="' + escapeAttribute(doc.title) + '">★ ' + escapeHtml(doc.title) + '</button>'; });
+    }
+    if (recent.length) {
+        html += '<div class="personal-section-title">最近阅读</div>';
+        recent.slice(0, 6).forEach(function(doc) { html += '<button class="personal-doc" type="button" data-doc-index="' + LAW_DATABASE.indexOf(doc) + '" title="' + escapeAttribute(doc.title) + '">' + escapeHtml(doc.title) + '</button>'; });
+    }
+    area.innerHTML = html || '<p class="personal-empty">收藏或打开文件后，会显示在这里；数据仅保存在本机浏览器。</p>';
+}
+
+// ===== 文件列表（侧边栏「文件列表」） =====
+
+/**
+ * 初始化侧边栏文件列表：遍历所有文档，生成可点击的列表项，
+ * 点击后调用 viewDoc() 查看该文档全文。超长标题截断并显示省略号。
+ */
+function initDocList() {
+    const area = document.getElementById('docListArea');
+    area.replaceChildren();
+    const fragment = document.createDocumentFragment();
+    LAW_DATABASE.map(function(doc, index) { return { doc: doc, index: index }; }).sort(function(a, b) { return compareDocuments(a.doc, b.doc); }).slice(0, visibleDocCount).forEach(function(itemData) {
+        const doc = itemData.doc;
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'doc-list-item';
+        item.dataset.docIndex = String(itemData.index);
+        item.textContent = doc.title;
+        item.title = doc.title;
+        fragment.appendChild(item);
+    });
+    area.appendChild(fragment);
+    if (visibleDocCount < LAW_DATABASE.length) {
+        const more = document.createElement('button');
+        more.type = 'button'; more.id = 'loadMoreDocs'; more.className = 'load-more-btn';
+        more.textContent = '再显示 ' + Math.min(SIDEBAR_PAGE_SIZE, LAW_DATABASE.length - visibleDocCount) + ' 份文件';
+        area.appendChild(more);
+    }
+}
+
+// ===== 核心搜索 =====
+
+/**
+ * 执行搜索：
+ *   1. 根据 currentFilters 筛选文档范围
+ *   2. 若无关键字，直接展示筛选后的文件列表
+ *   3. 若有关键字，在每篇文档的 articles 中搜索匹配条目
+ *   4. 若 articles 未命中但 full_text 命中，回退展示首条
+ *   5. 搜索完成后调用 renderResults() 渲染结果
+ * 搜索逻辑：不区分大小写，同时匹配条文内容和条题
+ * 空值保护：article_title 字段可能不存在，已加 || '' 保护
+ */
+function doSearch(options) {
+    options = options || {};
+    const keyword = document.getElementById('searchInput').value.trim();
+    if (options.resetPage) currentPage = 1;
+    if (!options.keepDetail) { viewingDoc = null; viewingArticle = null; }
+
+    // Filter docs
+    let filtered = LAW_DATABASE.filter(function(doc) {
+        if (searchScopeDocId && doc.document_id !== searchScopeDocId) return false;
+        if (currentFilters.source !== 'all' && doc.source !== currentFilters.source) return false;
+        if (currentFilters.category !== 'all' && doc.sub_category !== currentFilters.category) return false;
+        if (currentFilters.year !== 'all' && doc.year !== currentFilters.year) return false;
+        if (currentFilters.validity === 'current' && doc.validity_status !== '有效') return false;
+        if (currentFilters.validity === 'review' && doc.validity_status === '有效') return false;
+        return true;
+    });
+
+    if (!keyword) {
+        // No keyword: show filtered doc list
+        searchResults = filtered.map(function(doc) { return { doc: doc, docIndex: LAW_DATABASE.indexOf(doc), matchedArticles: [], score: 0 }; })
+            .sort(function(a, b) { return compareDocuments(a.doc, b.doc); });
+        renderResults(keyword);
+        return;
+    }
+
+    // Search in articles
+    const kw = keyword.toLowerCase();
+    searchResults = [];
+
+    filtered.forEach(function(doc) {
+        const matchedArticles = [];
+        let score = 0;
+        const title = (doc.title || '').toLowerCase();
+        if (title === kw) score += 10000;
+        else if (title.indexOf(kw) !== -1) score += 4000 + countOccurrences(title, kw);
+        doc.articles.forEach(function(art) {
+            var artContent = art.content || '';
+            var artTitle = art.article_title || '';
+            if (artContent.toLowerCase().indexOf(kw) !== -1 || artTitle.toLowerCase().indexOf(kw) !== -1) {
+                matchedArticles.push(art);
+                score += 100 + countOccurrences(artContent.toLowerCase(), kw) + countOccurrences(artTitle.toLowerCase(), kw) * 2;
+            }
+        });
+
+        // Also check full_text for broader match
+        var docFullText = doc.full_text || '';
+        if (matchedArticles.length === 0 && docFullText.toLowerCase().indexOf(kw) !== -1) {
+            // Find best matching article
+            doc.articles.forEach(function(art) {
+                if ((art.content || '').toLowerCase().indexOf(kw) !== -1) {
+                    matchedArticles.push(art);
+                }
+            });
+            if (matchedArticles.length === 0 && doc.articles[0]) matchedArticles.push(doc.articles[0]);
+            score += 20 + countOccurrences(docFullText.toLowerCase(), kw);
+        }
+
+        if (matchedArticles.length > 0 || title.indexOf(kw) !== -1) {
+            searchResults.push({
+                doc: doc,
+                docIndex: LAW_DATABASE.indexOf(doc),
+                matchedArticles: matchedArticles,
+                score: score
+            });
+        }
+    });
+    searchResults.sort(function(a, b) { return b.score - a.score || compareDocuments(a.doc, b.doc); });
+    renderResults(keyword);
+}
+
+function toggleDocumentMatches(docId) {
+    if (expandedMatchDocuments.has(docId)) expandedMatchDocuments.delete(docId);
+    else expandedMatchDocuments.add(docId);
+    renderResults(document.getElementById('searchInput').value.trim());
+}
+function matchPreview(art, keyword) {
+    const raw = cleanNoise(String(art.content || '')).replace(/\s+/g, ' ').trim();
+    const lower = raw.toLowerCase();
+    const matchAt = lower.indexOf(String(keyword || '').toLowerCase());
+    if (matchAt < 0) return truncate(raw, 260);
+    const start = Math.max(0, matchAt - 90);
+    const end = Math.min(raw.length, matchAt + String(keyword).length + 170);
+    return (start ? '…' : '') + raw.slice(start, end) + (end < raw.length ? '…' : '');
+}
+function adjacentArticleContext(doc, art) {
+    const index = doc.articles.indexOf(art);
+    if (index < 0) return '';
+    const previous = doc.articles[index - 1];
+    const next = doc.articles[index + 1];
+    const items = [];
+    if (previous) items.push('上一条：' + articleDisplayTitle(previous));
+    if (next) items.push('下一条：' + articleDisplayTitle(next));
+    return items.join('　');
+}
+
+/**
+ * 渲染搜索结果：生成结果卡片列表 + 分页控件。
+ * 每个卡片显示文档标题、分类/年份/条目数、来源标签，
+ * 以及前 3 条匹配条文的预览（高亮关键词）。
+ * @param {string} keyword - 当前搜索关键词（空字符串则不展示预览）
+ */
+function renderResults(keyword) {
+    const area = document.getElementById('resultsArea');
+
+    if (searchResults.length === 0 && keyword) {
+        area.innerHTML = '<div class="welcome"><h2>未找到相关结果</h2><p>请尝试更换关键词或调整筛选条件</p></div>';
+        document.getElementById('statusLine').textContent = '未找到与“' + keyword + '”匹配的文件。';
+        writeUrl(true);
+        return;
+    }
+
+    if (!keyword && searchResults.length === 0) {
+        area.innerHTML = document.getElementById('welcomeArea') ? area.innerHTML : '';
+        initWelcome();
+        writeUrl(true);
+        return;
+    }
+
+    let html = '';
+    html += '<div class="results-header">';
+    html += '<h2>' + (keyword ? '搜索结果' : '文件列表') + '</h2>';
+    const scopeDoc = getScopedDocument();
+    html += '<span class="results-count">' + (scopeDoc ? '范围：' + escapeHtml(scopeDoc.title) + '｜' : '') + '共 ' + searchResults.length + ' 个文件</span>';
+    html += '</div>';
+
+    // Pagination
+    const totalPages = Math.ceil(searchResults.length / PAGE_SIZE);
+    currentPage = Math.min(currentPage, totalPages);
+    const start = (currentPage - 1) * PAGE_SIZE;
+    const pageItems = searchResults.slice(start, start + PAGE_SIZE);
+
+    pageItems.forEach(function(item, i) {
+        const doc = item.doc;
+        const globalIdx = item.docIndex;
+        const badgeClass = sourceBadgeClass(doc);
+
+        html += '<div class="result-card">';
+
+        // Header
+        html += '<div class="result-card-header">';
+        html += '<h3 class="result-title"><button type="button" class="result-open" data-action="open-doc" data-doc-index="' + globalIdx + '" aria-label="查看 ' + escapeAttribute(doc.title) + ' 全文">' + escapeHtml(doc.title) + '</button></h3>';
+        html += '<div class="result-badges">';
+        html += '<span class="result-badge ' + badgeClass + '">' + doc.source + '</span>';
+        html += '<span class="result-badge ' + getStatusBadgeClass(doc) + '">' + getStatusLabel(doc) + '</span>';
+        html += '</div>';
+        html += '<div class="result-card-details">';
+        html += '<div class="result-meta">' + escapeHtml(doc.sub_category || '') + (doc.year ? ' | ' + escapeHtml(doc.year) + '年' : '') + ' | ' + escapeHtml(documentStructureSummary(doc)) + ' | ' + escapeHtml(doc.validity_status || '待核验') + '</div>';
+        html += '</div>';
+        html += '</div>';
+
+        // Matched articles preview
+        if (item.matchedArticles.length > 0 && keyword) {
+            const isExpanded = expandedMatchDocuments.has(doc.document_id);
+            const visibleArticles = isExpanded ? item.matchedArticles : item.matchedArticles.slice(0, 3);
+            visibleArticles.forEach(function(art) {
+                html += '<div class="result-article">';
+                html += '<div class="article-title">' + escapeHtml(articleDisplayTitle(art)) + '</div>';
+                html += '<div class="article-content">' + nl2br(highlightText(escapeHtml(matchPreview(art, keyword)), keyword)) + '</div>';
+                const context = adjacentArticleContext(doc, art);
+                if (context) html += '<div class="match-context">' + escapeHtml(context) + '</div>';
+                html += '<button type="button" class="article-jump" data-action="jump-article" data-doc-index="' + globalIdx + '" data-article="' + escapeAttribute(articleKey(art, item.matchedArticles.indexOf(art))) + '">定位此处</button>';
+                html += '</div>';
+            });
+            if (item.matchedArticles.length > 3) {
+                html += '<button type="button" class="match-list-toggle" data-action="toggle-matches" data-doc-id="' + escapeAttribute(doc.document_id) + '">' + (isExpanded ? '收起其余匹配条目' : '查看全部 ' + item.matchedArticles.length + ' 个匹配条目') + '</button>';
+            }
+        }
+
+        html += '</div>';
+    });
+
+    // Pagination controls
+    if (totalPages > 1) {
+        html += '<div class="pagination">';
+        html += '<button type="button" class="page-btn" data-action="page" data-page="' + (currentPage - 1) + '"' + (currentPage <= 1 ? ' disabled' : '') + '>上一页</button>';
+        for (let p = 1; p <= totalPages; p++) {
+            if (totalPages > 7 && Math.abs(p - currentPage) > 3 && p !== 1 && p !== totalPages) {
+                if (p === currentPage - 4 || p === currentPage + 4) html += '<span style="padding:6px">...</span>';
+                continue;
+            }
+            html += '<button type="button" class="page-btn' + (p === currentPage ? ' active' : '') + '" data-action="page" data-page="' + p + '"' + (p === currentPage ? ' aria-current="page"' : '') + '>' + p + '</button>';
+        }
+        html += '<button type="button" class="page-btn" data-action="page" data-page="' + (currentPage + 1) + '"' + (currentPage >= totalPages ? ' disabled' : '') + '>下一页</button>';
+        html += '</div>';
+    }
+
+    area.innerHTML = html;
+    document.getElementById('statusLine').textContent = '找到 ' + searchResults.length + ' 个文件，已按标题匹配与条文命中排序。';
+    writeUrl(true);
+}
+
+/**
+ * 翻页：更新当前页码并重新渲染结果，滚动到页面顶部。
+ * @param {number} page - 目标页码
+ */
+function goPage(page) {
+    currentPage = page;
+    renderResults(document.getElementById('searchInput').value.trim());
+    scrollToTop();
+}
+
+function buildDocumentToc(doc) {
+    const chapterAnchors = new Map();
+    let shownChapter = null;
+    let chapterIndex = 0;
+    doc.articles.forEach(function(art, index) {
+        if (art.chapter && art.chapter !== shownChapter) {
+            shownChapter = art.chapter;
+            chapterAnchors.set(art.chapter, 'section-' + doc.document_id + '-' + chapterIndex);
+            chapterIndex += 1;
+        }
+    });
+    const groups = new Map();
+    chapterAnchors.forEach(function(anchor, chapter) {
+        const levels = String(chapter).split(/\s*·\s*/).map(function(part) { return part.trim(); }).filter(Boolean);
+        if (!levels.length) return;
+        const parent = levels[0];
+        const child = levels.length > 1 ? levels[1] : null;
+        if (!groups.has(parent)) groups.set(parent, { label: parent, anchor: anchor, children: new Map() });
+        if (child && !groups.get(parent).children.has(child)) groups.get(parent).children.set(child, anchor);
+    });
+    if (!groups.size) return '';
+    let html = '<nav class="detail-toc" id="detailToc" aria-label="本文件目录"><h3><span>本文目录</span><button type="button" class="toc-collapse" data-action="toggle-toc">收起</button></h3>';
+    let groupIndex = 0;
+    groups.forEach(function(group) {
+        // 只把“编”或中文一级标题展开到章；已经是“章”的结构不再展开到节或具体条款。
+        const canExpandToChapter = /^第[一二三四五六七八九十百千万零〇]+编/.test(group.label) || /^[一二三四五六七八九十百千万零〇]+、/.test(group.label);
+        if (!group.children.size || !canExpandToChapter) {
+            html += '<button type="button" data-action="toc-jump" data-anchor="' + escapeAttribute(group.anchor) + '">' + escapeHtml(group.label) + '</button>';
+            return;
+        }
+        const childId = 'toc-group-' + doc.document_id + '-' + groupIndex;
+        html += '<div class="toc-group"><button type="button" class="toc-parent" data-action="toggle-toc-group" aria-expanded="false" aria-controls="' + escapeAttribute(childId) + '"><span class="toc-arrow">›</span>' + escapeHtml(group.label) + '</button>';
+        html += '<div class="toc-children" id="' + escapeAttribute(childId) + '" hidden>';
+        group.children.forEach(function(anchor, label) { html += '<button type="button" data-action="toc-jump" data-anchor="' + escapeAttribute(anchor) + '">' + escapeHtml(label) + '</button>'; });
+        html += '</div></div>';
+        groupIndex += 1;
+    });
+    return html + '</nav><button type="button" class="toc-reopen" id="tocReopen" data-action="toggle-toc" hidden>显示目录</button>';
+}
+function scrollToDetailAnchor(anchor) {
+    const target = document.getElementById(anchor);
+    const panel = document.querySelector('.detail-panel');
+    if (!target || !panel) return;
+    panel.classList.add('is-locating');
+    requestAnimationFrame(function() { requestAnimationFrame(function() {
+        target.scrollIntoView({ block: 'start', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+        target.classList.add('is-targeted');
+        window.setTimeout(function() { panel.classList.remove('is-locating'); }, 500);
+    }); });
+}
+function toggleMobileToc() {
+    const toc = document.getElementById('detailToc');
+    if (!toc) return;
+    toc.hidden = !toc.hidden;
+    const reopen = document.getElementById('tocReopen');
+    if (reopen) reopen.hidden = !toc.hidden;
+}
+function toggleTocGroup(button) {
+    const child = document.getElementById(button.getAttribute('aria-controls'));
+    if (!child) return;
+    child.hidden = !child.hidden;
+    button.setAttribute('aria-expanded', String(!child.hidden));
+}
+function citationUrl(doc, articleId) {
+    const url = new URL(window.location.href);
+    url.search = '';
+    url.hash = '';
+    url.searchParams.set('doc', doc.document_id);
+    if (articleId) { url.searchParams.set('article', articleId); url.hash = 'article-' + doc.document_id + '-' + articleId; }
+    return url.toString();
+}
+function citationText(doc, art) {
+    const lines = [doc.title];
+    if (doc.document_number) lines.push('文号：' + doc.document_number);
+    if (art) lines.push('条款：' + articleDisplayTitle(art));
+    if (doc.version_label) lines.push('版本：' + doc.version_label);
+    if (doc.effective_date) lines.push('施行日期：' + doc.effective_date);
+    lines.push('链接：' + citationUrl(doc, art ? art.article_id : null));
+    return lines.join('\n');
+}
+async function copyText(text) {
+    try {
+        if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); return true; }
+        const textarea = document.createElement('textarea');
+        textarea.value = text; textarea.setAttribute('readonly', ''); textarea.style.position = 'fixed'; textarea.style.opacity = '0';
+        document.body.appendChild(textarea); textarea.select();
+        const copied = document.execCommand('copy');
+        textarea.remove();
+        return copied;
+    } catch (error) { return false; }
+}
+async function copyDocumentCitation(docIndex) {
+    const doc = LAW_DATABASE[docIndex];
+    if (!doc) return;
+    document.getElementById('statusLine').textContent = await copyText(citationText(doc)) ? '文件引用已复制。' : '复制失败，请手动复制页面链接。';
+}
+async function copyArticleCitation(docIndex, articleId) {
+    const doc = LAW_DATABASE[docIndex];
+    const art = doc && doc.articles.find(function(item) { return item.article_id === articleId; });
+    if (!doc || !art) return;
+    document.getElementById('statusLine').textContent = await copyText(citationText(doc, art)) ? '本条引用已复制。' : '复制失败，请手动复制页面链接。';
+}
+
+// ===== 查看文档详情（全文） =====
+
+/**
+ * 查看某部法律/制度的完整条文：
+ *   生成详情页，列出该文档所有条目，如有搜索关键词则高亮。
+ * @param {number} docIndex - 文档在 LAW_DATABASE 中的索引
+ */
+function viewDoc(docIndex, articleNumber, fromHistory) {
+    const doc = LAW_DATABASE[docIndex];
+    if (!doc) return;
+
+    const area = document.getElementById('resultsArea');
+    const keyword = document.getElementById('searchInput').value.trim();
+    const badgeClass = sourceBadgeClass(doc);
+
+    let html = '';
+    viewingDoc = docIndex;
+    viewingArticle = articleNumber || null;
+    html += '<button type="button" class="back-btn" data-action="back">&laquo; 返回列表</button>';
+    html += '<div class="detail-panel' + (articleNumber ? ' is-locating' : '') + '">';
+    html += '<h2>' + escapeHtml(doc.title) + '</h2>';
+    html += '<div class="detail-meta">';
+    html += '<span class="result-badge ' + badgeClass + '">' + doc.source + '</span> ';
+    html += '<span class="result-badge ' + getStatusBadgeClass(doc) + '">' + getStatusLabel(doc) + '</span> ';
+    html += escapeHtml(doc.sub_category || '') + (doc.year ? ' | ' + escapeHtml(doc.year) + '年' : '') + ' | ' + escapeHtml(documentStructureSummary(doc));
+    html += '</div>';
+    html += '<div class="detail-actions">';
+    html += '<button type="button" class="detail-search-action" data-action="search-current-doc">在本文件内检索</button>';
+    html += '<button type="button" class="detail-secondary-action" data-action="copy-document-citation" data-doc-index="' + docIndex + '">复制文件引用</button>';
+    html += '<button type="button" class="detail-secondary-action" data-action="toggle-favorite" data-doc-index="' + docIndex + '">' + (isFavorite(doc.document_id) ? '取消收藏' : '收藏本文件') + '</button>';
+    html += '</div>';
+    html += '<div class="detail-layout"><div class="detail-body">';
+    html += renderProvenance(doc);
+
+    let shownChapter = null;
+    let chapterIndex = 0;
+    doc.articles.forEach(function(art, articleIndex) {
+        const key = articleKey(art, articleIndex);
+        const anchorId = 'article-' + doc.document_id + '-' + key;
+        if (art.chapter && art.chapter !== shownChapter) {
+            html += '<div class="article-chapter" id="section-' + doc.document_id + '-' + chapterIndex + '">' + escapeHtml(art.chapter) + '</div>';
+            shownChapter = art.chapter;
+            chapterIndex += 1;
+        }
+        html += '<article class="detail-article" id="' + escapeAttribute(anchorId) + '">';
+        html += '<div class="da-title">' + escapeHtml(articleDisplayTitle(art)) + '<span class="article-tools"><button type="button" class="article-copy" data-action="copy-article-citation" data-doc-index="' + docIndex + '" data-article="' + escapeAttribute(key) + '">引用本条</button></span></div>';
+        html += '<div class="da-content">' + renderStructuredArticleContent(art, keyword) + '</div>';
+        html += '</article>';
+    });
+
+    html += '</div></div>';
+    area.innerHTML = html;
+    const tocSlot = document.getElementById('detailTocSidebar');
+    const tocHtml = buildDocumentToc(doc);
+    tocSlot.innerHTML = tocHtml;
+    tocSlot.classList.toggle('is-active', Boolean(tocHtml));
+    recordRecentDocument(doc.document_id);
+    initPersonalList();
+    writeUrl(Boolean(fromHistory));
+    document.getElementById('statusLine').textContent = '已打开“' + doc.title + '”。';
+    requestAnimationFrame(function() {
+        // 定位时让浏览器先完成两帧真实排版；否则 content-visibility 的预估高度会在长文中把位置推到后面的条款。
+        requestAnimationFrame(function() {
+        let target = articleNumber ? document.getElementById('article-' + doc.document_id + '-' + articleNumber) : null;
+        // 兼容旧版按“条号”分享的链接；新版使用唯一的 article_id，避免附件或手册重复条号造成跳转错误。
+        if (!target && articleNumber) {
+            const legacyIndex = doc.articles.findIndex(function(art) { return String(art.number) === String(articleNumber); });
+            if (legacyIndex >= 0) target = document.getElementById('article-' + doc.document_id + '-' + articleKey(doc.articles[legacyIndex], legacyIndex));
+        }
+        if (target) {
+            target.scrollIntoView({ block: 'start', behavior: 'auto' });
+            target.classList.add('is-targeted');
+        }
+        else scrollToTop();
+        });
+    });
+}
+
+function returnToResults() {
+    viewingDoc = null;
+    viewingArticle = null;
+    const tocSlot = document.getElementById('detailTocSidebar');
+    if (tocSlot) { tocSlot.replaceChildren(); tocSlot.classList.remove('is-active'); }
+    doSearch({ resetPage: false });
+    scrollToTop();
+}
+
+function countOccurrences(text, keyword) {
+    if (!keyword) return 0;
+    let count = 0; let start = 0;
+    while ((start = text.indexOf(keyword, start)) !== -1) { count += 1; start += keyword.length; }
+    return count;
+}
+
+function prefersReducedMotion() { return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
+function scrollToTop() { window.scrollTo({ top: 0, behavior: prefersReducedMotion() ? 'auto' : 'smooth' }); }
+
+// ===== 工具函数 =====
+
+/**
+ * HTML 转义：将 & < > " 转义为实体，防止 XSS 注入。
+ * @param {string} text - 原始文本
+ * @returns {string} 转义后的安全文本
+ */
+function escapeHtml(text) {
+    if (!text) return '';
+    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function escapeAttribute(text) {
+    return escapeHtml(String(text || '')).replace(/'/g, '&#39;');
+}
+
+function getStatusLabel(doc) {
+    if (doc.verification_status === 'official_source_verified') return '官网来源已核验';
+    if (doc.verification_status === 'personal_learning') return '个人学习记录';
+    if (doc.verification_status === 'official_text_verified') return '官方正文已核验';
+    if (doc.verification_status !== 'official_metadata_verified') return '官网来源已核验';
+    return doc.validity_status || '元数据已核验';
+}
+
+function getStatusBadgeClass(doc) {
+    if (doc.verification_status === 'official_source_verified') return 'badge-status-ok';
+    if (doc.verification_status === 'personal_learning') return 'badge-status-old';
+    if (doc.verification_status === 'official_text_verified') return 'badge-status-ok';
+    if (doc.verification_status !== 'official_metadata_verified') return 'badge-status-ok';
+    return doc.validity_status === '有效' ? 'badge-status-ok' : 'badge-status-old';
+}
+
+function renderProvenance(doc) {
+    function item(label, value) {
+        return '<div class="provenance-item"><span class="provenance-label">' + label + '：</span>' + escapeHtml(value || '未录入') + '</div>';
+    }
+    const sourceUrl = doc.official_source_url;
+    const sourceLabel = doc.official_source || '查看官方记录';
+    const source = sourceUrl
+        ? '<a href="' + escapeAttribute(sourceUrl) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(sourceLabel) + '</a>'
+        : '未录入';
+    const flags = (doc.quality_flags || []).map(function(flag) { return qualityFlagLabel(flag); }).join('；');
+    let html = '<section class="provenance-panel" aria-label="来源与版本信息"><h3>来源与版本信息</h3><div class="provenance-grid">';
+    html += item('文档 ID', doc.document_id);
+    html += item('效力状态', doc.validity_status);
+    html += item('制定/发布机关', doc.issuer);
+    html += item('法规范畴', doc.legal_document_type);
+    html += item('文号', doc.document_number);
+    html += item('发布日期', doc.publication_date);
+    html += item('施行日期', doc.effective_date);
+    html += item('版本标识', doc.version_label);
+    html += item('核验状态', getStatusLabel(doc));
+    html += item('核验日期', doc.verified_at);
+    html += item('源文件目录', doc.source_folder);
+    html += item('源文件名称', doc.source_filename);
+    html += '</div><div class="provenance-item"><span class="provenance-label">权威来源：</span>' + source + '</div>';
+    const scope = doc.verification_scope === 'telecom-procurement-supply-chain-portal' ? '中国电信采购供应链管理平台来源' : (doc.verification_scope === 'personal-learning' ? '无，个人学习' : (doc.verification_scope === 'official-source-verified' ? '官网来源已核验' : (doc.verification_scope === 'official-electronic-text' ? '国家法律法规数据库正式电子文本逐条更新' : (doc.verification_scope === 'official-metadata-only' ? '官方元数据（正文仍须对照原件）' : '官网来源已核验'))));
+    html += '<div class="provenance-item"><span class="provenance-label">核验范围：</span>' + escapeHtml(scope) + '</div>';
+    if (flags) html += '<p class="quality-note">质量提示：' + escapeHtml(flags) + '。</p>';
+    return html + '</section>';
+}
+
+function qualityFlagLabel(flag) {
+    const labels = {
+        MISSING_YEAR: '缺少年份',
+        OCR_REPLACEMENT_CHARACTER: '含 OCR 缺字/乱码',
+        OCR_CONTEXTUAL_CORRECTION: '已作 OCR 上下文修正，待原件复核',
+        INVALID_DATE_TEXT: '含异常日期文本',
+        OFFICIAL_METADATA_UNVERIFIED: '国家法律官方元数据未核验',
+        SOURCE_UNVERIFIED: '来源未核验',
+        SOURCE_CLASSIFICATION_MISMATCH: '本地分类与官方法规范畴不一致'
+        ,OCR_EXTRACTED_REQUIRES_MANUAL_REVIEW: '扫描件 OCR 提取，建议对照原文件复核'
+    };
+    return labels[flag] || flag;
+}
+
+/**
+ * 关键词高亮：将文本中匹配关键词的部分用 <mark> 标签包裹。
+ * 自动转义关键词中的正则特殊字符。
+ * @param {string} text - 已转义的 HTML 文本
+ * @param {string} keyword - 搜索关键词
+ * @returns {string} 带高亮标签的 HTML
+ */
+function highlightText(text, keyword) {
+    if (!keyword) return text;
+    const regex = new RegExp('(' + keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+    return text.replace(regex, '<mark>$1</mark>');
+}
+
+/**
+ * 截断文本：超过 maxLen 则截断并追加省略号。
+ * @param {string} text - 原始文本
+ * @param {number} maxLen - 最大字符数
+ * @returns {string} 截断后的文本
+ */
+function truncate(text, maxLen) {
+    if (text.length <= maxLen) return text;
+    return text.substring(0, maxLen) + '...';
+}
+
+/**
+ * 清除 PDF 硬换行：将文本中的 \n 去除，让浏览器自然换行。
+ * 电信制度文件从 PDF 提取时，每行约 25-35 字就断行，
+ * 不处理会导致页面出现大量短行，影响阅读。
+ * @param {string} text - 原始文本
+ * @returns {string} 无换行符的文本
+ */
+function nl2br(text) {
+    if (!text) return '';
+    return text.replace(/\n/g, '');
+}
+
+/**
+ * 清理 PDF 提取产生的噪音文本：
+ *   - 控制字符（\u0000-\u0008, \u000b, \u000c, \u000e-\u001f）
+ *   - 页码标记（「— 12 —」「□ 3 □」）
+ *   - 独占一行的数字（PDF 页码残留）
+ *   - 中文空格+数字组合
+ *   - 多余空格
+ *   - 残留换行符
+ * @param {string} text - 原始文本
+ * @returns {string} 清理后的干净文本
+ */
+function cleanNoise(text) {
+    if (!text) return text;
+    return text
+        .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '') // 先清除所有控制字符（保留\t\n\r）
+        // 移除单独占行的页码并把前后文字接回同一段，避免“-4-”把一句话断成两段。
+        .replace(/\n\s*[-—–]\s*\d{1,4}\s*[-—–]\s*\n/g, '\n')
+        .replace(/(?:^|\n)\s*[-—–]\s*\d{1,4}\s*[-—–]\s*(?=\n|$)/g, '\n')
+        .replace(/—\s*\d+\s*—/g, '')        // 兼容行内页码标记 — 12 —
+        .replace(/-\s*\d+\s*-/g, '')         // 兼容行内页码标记 - 12 -
+        .replace(/□\s*\d+\s*□/g, '')         // 页码标记 □ 3 □
+        .replace(/\n\s*\d+\s*\n/g, '\n')     // 独占一行的数字（PDF页码残留）
+        .replace(/　\d+\s*　/g, '')           // 中文空格+数字+中文空格
+        .replace(/  +/g, ' ')                    // 多个空格合并为一个
+        .replace(/\n{3,}/g, '\n\n')              // 保留段落/编号边界，供详情页排版使用
+        .replace(/^\s+/, '');                     // 去除行首空白
+}
+
+// ===== 作者水印（JS 动态生成，数字编码存储，MutationObserver 自动恢复） =====
+
+/**
+ * UI 渲染优化 / 水印初始化：
+ *   将编码后的作者信息解码为文本，创建低透明度的水印 span 固定在左下角。
+ *   同时启动 MutationObserver 监听 body 变化，若水印被删除则自动恢复。
+ *   水印用数字数组编码存储，不易被直接搜索到。
+ */
+function _uiOpt(){
+    if (document.getElementById('_opt')) return;
+    var t='',v=_ck;
+    for(var i=0;i<v.length;i+=2){t+=String.fromCharCode((v[i]<<8)|v[i+1]);}
+    var e=document.createElement('span');
+    e.id='_opt';
+    e.style.cssText='position:fixed;bottom:8px;left:14px;font-size:10px;color:rgba(107,114,128,0.22);pointer-events:none;z-index:20;letter-spacing:1px';
+    e.textContent=t;
+    document.body.appendChild(e);
+    if(!window._m){window._m=new MutationObserver(function(){if(!document.getElementById('_opt'))_uiOpt();});window._m.observe(document.body,{childList:true});}
+}
+</script>
+
+</body>
+</html>
