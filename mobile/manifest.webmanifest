@@ -1,0 +1,14 @@
+{
+  "name": "法律法规与制度检索（加密版）",
+  "short_name": "法规检索",
+  "description": "支持离线使用的法律法规与中国电信制度检索快捷应用。",
+  "lang": "zh-CN",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f5f7fb",
+  "theme_color": "#1040a0",
+  "icons": [
+    { "src": "icon-512.png", "sizes": "256x256", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
