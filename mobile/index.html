@@ -636,6 +636,17 @@
         .pwa-strip.offline { background: #fff7df; color: #8a5a00; }
         .pwa-update { display: none; align-items: center; justify-content: center; gap: 10px; padding: 10px 14px; background: #0b5fc0; color: #fff; font-size: 13px; text-align: center; }
         .pwa-update button { flex: none; padding: 6px 11px; border: 1px solid rgba(255,255,255,.75); border-radius: 999px; background: #fff; color: #0752a1; font: inherit; font-weight: 700; cursor: pointer; }
+        .pwa-install { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px 10px; padding: 9px 14px; border-bottom: 1px solid #d9e3f6; background: #fff; color: var(--text-secondary); font-size: 12px; text-align: center; }
+        .pwa-install[hidden] { display: none; }
+        .pwa-install button { min-height: 30px; padding: 5px 11px; border: 1px solid #145bc0; border-radius: 999px; background: #145bc0; color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+        .pwa-install .install-help { border-color: #bfd0ec; background: #fff; color: #1453a5; }
+        .install-guide { width: min(92vw, 430px); border: 0; border-radius: 14px; padding: 0; box-shadow: 0 20px 55px rgba(16, 43, 91, .28); }
+        .install-guide::backdrop { background: rgba(4, 21, 56, .48); }
+        .install-guide-inner { padding: 24px; }
+        .install-guide h2 { margin: 0 0 10px; color: var(--primary-dark); font-size: 19px; }
+        .install-guide p, .install-guide li { color: var(--text-secondary); font-size: 14px; line-height: 1.65; }
+        .install-guide ol { margin: 12px 0 18px; padding-left: 23px; }
+        .install-guide button { width: 100%; min-height: 40px; border: 0; border-radius: 8px; background: var(--primary); color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
         @media (max-width: 720px) { .header { padding: 22px 16px; } .header h1 { font-size: 22px; } .header p { font-size: 13px; line-height: 1.6; } .data-notice { margin: 10px 12px; } .search-section, .filter-section, .topic-section, .main-section { margin-left: 12px; margin-right: 12px; } .search-box { flex-direction: column; } .search-btn { min-height: 42px; } .main-section { grid-template-columns: 1fr; } .sidebar { display: none; } .filter-row { align-items: flex-start; } .filter-label { min-width: 42px; padding-top: 7px; } .filter-tag, .topic-chip { min-height: 34px; } .scope-picker { align-items: stretch; flex-wrap: wrap; } .scope-picker input { min-width: min(100%, 240px); } .feedback-fab { bottom: 18px; } .access-card { padding: 24px 20px; } }
     </style>
 </head>
@@ -643,7 +654,7 @@
 <section class="access-gate" id="accessGate" aria-labelledby="accessTitle">
     <form class="access-card" id="accessForm">
         <h1 id="accessTitle">制度文件访问</h1>
-        <p>请输入访问口令后使用检索系统。口令仅用于本机解密，不会上传或保存。</p>
+        <p>请输入访问口令后使用检索系统。口令仅用于本机解密，不会上传或保存；手机首次解锁可能需要等待片刻。</p>
         <label for="accessPassword">访问口令</label>
         <input id="accessPassword" type="password" autocomplete="current-password" required autofocus>
         <button class="search-btn" id="accessSubmit" type="submit">进入检索系统</button>
@@ -651,7 +662,20 @@
     </form>
 </section>
 <div class="pwa-strip" id="pwaStatus" role="status">正在准备离线检索数据…</div>
+<div class="pwa-install" id="pwaInstall" hidden>
+    <span id="pwaInstallText">添加到手机桌面，像 App 一样打开并支持离线检索。</span>
+    <button id="installAppButton" type="button">安装应用</button>
+    <button class="install-help" id="installHelpButton" type="button">安装帮助</button>
+</div>
 <div class="pwa-update" id="pwaUpdate" role="status"><span>发现新版制度数据</span><button id="pwaUpdateNow" type="button">立即更新</button></div>
+<dialog class="install-guide" id="installGuideDialog" aria-labelledby="installGuideTitle">
+    <div class="install-guide-inner">
+        <h2 id="installGuideTitle">添加到手机桌面</h2>
+        <p id="installGuideText">请使用浏览器菜单将本页添加到主屏幕。</p>
+        <ol id="installGuideSteps"></ol>
+        <button id="installGuideClose" type="button">我知道了</button>
+    </div>
+</dialog>
 <a class="skip-link" href="#mainContent">跳至检索结果</a>
 
 <!-- ==================== 页头 Header ==================== -->
@@ -830,19 +854,32 @@ function bindAccessGate() {
     const submit = document.getElementById('accessSubmit');
     form.addEventListener('submit', async function(event) {
         event.preventDefault();
+        const password = passwordInput.value.trim();
+        if (!password) {
+            status.textContent = '请输入访问口令。';
+            passwordInput.focus();
+            return;
+        }
         submit.disabled = true;
-        status.textContent = '正在验证访问口令…';
+        submit.textContent = '正在解锁…';
+        status.textContent = '正在解锁本机加密数据，首次在手机上可能需要 5–20 秒，请不要关闭页面。';
+        await new Promise(function(resolve) { requestAnimationFrame(function() { requestAnimationFrame(resolve); }); });
         try {
-            LAW_DATABASE = await decryptLawDatabase(passwordInput.value);
+            if (!window.LAW_DATABASE_ENCRYPTED) throw new Error('DATA_NOT_READY');
+            LAW_DATABASE = await decryptLawDatabase(password);
+            if (!LAW_DATABASE.length) throw new Error('EMPTY_DATABASE');
             passwordInput.value = '';
             document.getElementById('accessGate').remove();
             initializeLibrary();
         } catch (error) {
-            passwordInput.value = '';
+            console.error('本机加密数据解锁失败：', error);
             passwordInput.focus();
-            status.textContent = '访问口令不正确，请重试。';
+            status.textContent = error && error.message === 'DATA_NOT_READY'
+                ? '制度数据尚未加载完成。请保持联网，等待几秒后再次点击进入。'
+                : '口令不正确或数据未完整加载。请确认口令后重试；首次打开请保持联网。';
         } finally {
             submit.disabled = false;
+            submit.textContent = '进入检索系统';
         }
     });
 }
@@ -1940,14 +1977,71 @@ function _uiOpt(){
 <!-- 手机快捷应用：离线缓存与数据版本检查。部署到 HTTPS 后自动生效。 -->
 <script>
 (function() {
-    const APP_VERSION = '1.0.0';
+    const APP_VERSION = '1.0.1';
     const INSTALLED_VERSION_KEY = 'law-search-mobile:installed-version';
     const status = document.getElementById('pwaStatus');
     const updateBar = document.getElementById('pwaUpdate');
     const updateButton = document.getElementById('pwaUpdateNow');
+    const installArea = document.getElementById('pwaInstall');
+    const installButton = document.getElementById('installAppButton');
+    const installHelpButton = document.getElementById('installHelpButton');
+    const installText = document.getElementById('pwaInstallText');
+    const installDialog = document.getElementById('installGuideDialog');
+    const installGuideText = document.getElementById('installGuideText');
+    const installGuideSteps = document.getElementById('installGuideSteps');
+    const installGuideClose = document.getElementById('installGuideClose');
     let remoteVersion = APP_VERSION;
     let updateRequested = false;
+    let deferredInstallPrompt = null;
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
     function setStatus(text, offline) { status.textContent = text; status.classList.toggle('offline', Boolean(offline)); }
+    function showInstallGuide() {
+        const ua = navigator.userAgent || '';
+        const isIOS = /iPhone|iPad|iPod/i.test(ua);
+        const isAndroid = /Android/i.test(ua);
+        if (isIOS) {
+            installGuideText.textContent = 'iPhone/iPad 需要通过 Safari 的“分享”菜单添加到主屏幕。';
+            installGuideSteps.innerHTML = '<li>请用 Safari 打开本页面。</li><li>点击底部的“分享”按钮。</li><li>选择“添加到主屏幕”，再点击“添加”。</li>';
+        } else if (isAndroid) {
+            installGuideText.textContent = 'Android、HarmonyOS 浏览器可通过浏览器菜单添加到桌面。';
+            installGuideSteps.innerHTML = '<li>点击浏览器右上角或底部的菜单。</li><li>选择“安装应用”“添加到主屏幕”或“添加快捷方式”。</li><li>确认后，桌面会出现“法规检索”图标。</li>';
+        } else {
+            installGuideText.textContent = '请在浏览器菜单中选择“安装应用”或“添加到主屏幕”。';
+            installGuideSteps.innerHTML = '<li>打开浏览器菜单。</li><li>选择“安装应用”或“添加到主屏幕”。</li><li>确认添加即可。</li>';
+        }
+        if (typeof installDialog.showModal === 'function') installDialog.showModal();
+        else alert(installGuideText.textContent);
+    }
+    function showInstallArea(message) {
+        if (isStandalone) return;
+        installArea.hidden = false;
+        if (message) installText.textContent = message;
+    }
+    window.addEventListener('beforeinstallprompt', function(event) {
+        event.preventDefault();
+        deferredInstallPrompt = event;
+        installButton.textContent = '安装应用';
+        showInstallArea('可安装到手机桌面，离线也能检索。');
+    });
+    window.addEventListener('appinstalled', function() {
+        deferredInstallPrompt = null;
+        installArea.hidden = true;
+        setStatus('已添加到桌面，可像 App 一样打开并离线检索。', false);
+    });
+    installButton.addEventListener('click', async function() {
+        if (!deferredInstallPrompt) { showInstallGuide(); return; }
+        installButton.disabled = true;
+        try {
+            deferredInstallPrompt.prompt();
+            await deferredInstallPrompt.userChoice;
+        } finally {
+            deferredInstallPrompt = null;
+            installButton.disabled = false;
+        }
+    });
+    installHelpButton.addEventListener('click', showInstallGuide);
+    installGuideClose.addEventListener('click', function() { installDialog.close(); });
+    if (!isStandalone) showInstallArea('添加到手机桌面，像 App 一样打开并支持离线检索。');
     async function checkVersion() {
         if (!navigator.onLine) { setStatus('当前离线：可使用已下载的制度数据进行检索。', true); return; }
         try {
